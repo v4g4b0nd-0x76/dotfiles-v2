@@ -322,31 +322,6 @@ require("lazy").setup({
                     end,
                 })
             end
-            local function git_add_and_commit_prompt()
-                vim.ui.input({ prompt = "💾 Enter Git Commit Message: " }, function(msg)
-                    if not msg or msg == "" then
-                        vim.notify("Git operation cancelled: Empty message block.", vim.log.levels.WARN)
-                        return
-                    end
-
-                    -- Stage local tree working files safely
-                    local add_out = vim.fn.system("git add .")
-                    if vim.v.shell_error ~= 0 then
-                        vim.notify("Git Add Failed:\n" .. add_out, vim.log.levels.ERROR)
-                        return
-                    end
-
-                    -- Sanitize incoming text bounds to block literal bash breaking characters
-                    local escaped_msg = msg:gsub("'", "'\\''")
-                    local commit_out = vim.fn.system(string.format("git commit -m '%s'", escaped_msg))
-
-                    if vim.v.shell_error ~= 0 then
-                        vim.notify("Git Commit Failed:\n" .. commit_out, vim.log.levels.ERROR)
-                    else
-                        vim.notify("Changes successfully staged and committed!\n" .. msg, vim.log.levels.INFO)
-                    end
-                end)
-            end
             local function git_checkout()
                 local checkout_out = vim.fn.system("git checkout ,")
                 if vim.v.shell_error ~= 0 then
@@ -362,9 +337,7 @@ require("lazy").setup({
                 { desc = "Browse Commits & View Changed Files" }
             )
             vim.keymap.set("n", "<leader>gdc", "<cmd>DiffviewClose<CR>", { desc = "Close Diff Workspace" })
-            vim.keymap.set("n", "<leader>ga", git_add_and_commit_prompt, { desc = "Git Add All & Commit Prompt" })
             vim.keymap.set("n", "<leader>gco", git_checkout, { desc = "Git checkout changes" })
-            vim.keymap.set("n", "<leader>gp", vim.fn.system("git push"), { desc = "Git checkout changes" })
 
             vim.keymap.set("n", "<leader>gh", function()
                 vim.cmd("NvimTreeClose")
@@ -584,13 +557,13 @@ vim.api.nvim_create_autocmd({ "TermOpen", "BufEnter" }, {
     end,
 })
 
-vim.api.nvim_create_autocmd("VimLeavePre", {
-    callback = function()
-        if vim.bo.filetype ~= "gitcommit" then
-            vim.cmd("mksession! .nvim_session")
-        end
-    end,
-})
+-- vim.api.nvim_create_autocmd("VimLeavePre", {
+--     callback = function()
+--         if vim.bo.filetype ~= "gitcommit" then
+--             vim.cmd("mksession! .nvim_session")
+--         end
+--     end,
+-- })
 
 vim.api.nvim_create_autocmd("VimEnter", {
     nested = true,
