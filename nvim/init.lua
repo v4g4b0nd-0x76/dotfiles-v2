@@ -113,31 +113,36 @@ vim.opt.rtp:prepend(lazypath)
 -- 4. PLUGIN DEFINITIONS & CONFIGURATIONS
 require("lazy").setup({
 
-    -- Theme: Kanagawa (Dark, High-Contrast Dragon Variant)
     {
-        "rebelot/kanagawa.nvim",
+        "ember-theme/nvim",
+        name = "ember",
         priority = 1000,
         config = function()
-            require("kanagawa").setup({
-                compile = false,
-                undercurl = true,
-                commentStyle = { italic = true },
-                keywordStyle = { italic = true },
-                statementStyle = { bold = true },
-                transparent = false,
-                dimInactive = false,
-                terminalColors = true,
-                theme = "dragon",
-                background = { dark = "dragon" },
+            require("ember").setup({
+                variant = "ember", -- "ember", "ember-soft", "ember-light", "ember-auto"
+                styles = {
+                    comments = { italic = true },
+                    keywords = { bold = true },
+                    types = { bold = true },
+                },
+                transparent = false, -- transparent editor background
+                dark_variant = "ember", -- used by `ember-auto` when background = "dark"
             })
-            vim.cmd("colorscheme kanagawa")
 
-            -- HIGH-VISIBILITY EXTRA DIFF COLOR PACK (Deep Contrast Background Highlights)
-            vim.api.nvim_set_hl(0, "DiffAdd", { bg = "#1d3522", fg = "NONE" })      -- Deep green background for new code
-            vim.api.nvim_set_hl(0, "DiffChange", { bg = "#182638", fg = "NONE" })   -- Deep indigo background for altered blocks
-            vim.api.nvim_set_hl(0, "DiffDelete", { bg = "#3d1b1b", fg = "#5c2424" }) -- Deep crimson background for deleted lines
-            vim.api.nvim_set_hl(0, "DiffText", { bg = "#284566", fg = "NONE", bold = true }) -- Vibrant blue for inline granular shifts
+            vim.cmd("colorscheme ember")
         end,
+    },
+    {
+        "romgrk/barbar.nvim",
+        dependencies = {
+            "lewis6991/gitsigns.nvim", -- OPTIONAL: for git status
+            "nvim-tree/nvim-web-devicons", -- OPTIONAL: for file icons
+        },
+        init = function()
+            vim.g.barbar_auto_setup = false
+        end,
+        opts = {},
+        version = "^1.0.0", -- optional: only update when a new 1.x version is released
     },
 
     -- Auto-close brackets and strings
@@ -342,10 +347,24 @@ require("lazy").setup({
                     end
                 end)
             end
+            local function git_checkout()
+                local checkout_out = vim.fn.system("git checkout ,")
+                if vim.v.shell_error ~= 0 then
+                    vim.notify("Git Checkout Failed:\n" .. add_out, vim.log.levels.ERROR)
+                    return
+                end
+            end
             -- FIXED SHORTCUTS
-            vim.keymap.set("n", "<leader>gc", open_commit_picker_diff, { desc = "Browse Commits & View Changed Files" })
+            vim.keymap.set(
+                "n",
+                "<leader>gcc",
+                open_commit_picker_diff,
+                { desc = "Browse Commits & View Changed Files" }
+            )
             vim.keymap.set("n", "<leader>gdc", "<cmd>DiffviewClose<CR>", { desc = "Close Diff Workspace" })
             vim.keymap.set("n", "<leader>ga", git_add_and_commit_prompt, { desc = "Git Add All & Commit Prompt" })
+            vim.keymap.set("n", "<leader>gco", git_checkout, { desc = "Git checkout changes" })
+            vim.keymap.set("n", "<leader>gp", vim.fn.system("git push"), { desc = "Git checkout changes" })
 
             vim.keymap.set("n", "<leader>gh", function()
                 vim.cmd("NvimTreeClose")
@@ -391,14 +410,53 @@ require("lazy").setup({
             wk.setup()
             wk.add({
                 { "<leader>w",  group = "Window Management" },
-                { "<leader>wc", "<C-w>c",                                    desc = "Close Current Split" },
-                { "<leader>wo", "<C-w>o",                                    desc = "Only Keep Current Window" },
-                { "<leader>w=", "<C-w>=",                                    desc = "Equalize Split Sizes" },
-                { "<leader>wx", "<cmd>vsplit<CR>",                           desc = "Vertical Split" },
-                { "<leader>ws", "<cmd>split<CR>",                            desc = "Horizontal Split" },
-                { "<leader>m",  group = "Markdown Utilities" },
+                { "<leader>wq", "<C-w>c",                   desc = "Close Current Split" },
+                { "<leader>wo", "<C-w>o",                   desc = "Only Keep Current Window" },
+                { "<leader>w=", "<C-w>=",                   desc = "Equalize Split Sizes" },
+                { "<leader>wx", "<cmd>vsplit<CR>",          desc = "Vertical Split" },
+                { "<leader>ws", "<cmd>split<CR>",           desc = "Horizontal Split" },
+                {
+                    "<leader>wn",
+                    "<cmd>BufferNext<CR>",
+                    noremap = true,
+                    silent = true,
+                    desc = "Next Tab",
+                },
+                {
+                    "<leader>wp",
+                    "<cmd>BufferPrevious<CR>",
+                    noremap = true,
+                    silent = true,
+                    desc = "Previous Tab",
+                },
+                {
+                    "<leader>ww",
+                    "<cmd>BufferPick<CR>",
+                    noremap = true,
+                    silent = true,
+                    desc = "Select Tab",
+                },
+                {
+                    "<leader>wl",
+                    "<cmd>BufferPin<CR>",
+                    noremap = true,
+                    silent = true,
+                    desc = "Pin Tab",
+                },
+
+                {
+                    "<leader>wc",
+                    "<cmd>BufferClose<CR>",
+                    noremap = true,
+                    silent = true,
+                    desc = "Close Tab",
+                },
+
+                { "<leader>m",  group = "Markdown" },
                 { "<leader>d",  group = "Structural Diagnostics" },
-                { "<leader>g",  group = "Advanced Git Toolkit" },
+                { "<leader>f",  group = "Fuzzy Finder" },
+                { "<leader>g",  group = "GIT" },
+                { "<leader>l",  group = "lsp" },
                 { "<leader>gc", desc = "Browse Commits & View Changed Files" },
                 { "<leader>gd", group = "Diff Evaluation Engine" },
             })
@@ -501,8 +559,8 @@ vim.api.nvim_create_autocmd("LspAttach", {
         vim.keymap.set("n", "gd", ts_builtin.lsp_definitions, opts)
         vim.keymap.set("n", "gr", ts_builtin.lsp_references, opts)
         vim.keymap.set("n", "K", vim.lsp.buf.hover, opts)
-        vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, opts)
-        vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, opts)
+        vim.keymap.set("n", "<leader>la", vim.lsp.buf.code_action, { buffer = ev.buf, desc = "LSP code actions" })
+        vim.keymap.set("n", "<leader>ln", vim.lsp.buf.rename, { buffer = ev.buf, desc = "Rename Symbol Usage" })
 
         if client and client:supports_method("textDocument/inlayHint") then
             vim.lsp.inlay_hint.enable(true, { bufnr = ev.buf })
