@@ -22,6 +22,76 @@ opt.equalalways = false
 -- Configure Session Saver engine to preserve sizes and buffers perfectly
 opt.sessionoptions = "blank,buffers,curdir,folds,help,tabpages,winsize"
 
+local function diagnostic_short_message(message, max_len)
+    local text = message:gsub("\n%s*", " "):gsub("%s+", " ")
+    if #text > max_len then
+        return text:sub(1, max_len - 3) .. "..."
+    end
+    return text
+end
+
+local function show_diagnostic_detail()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lnum = vim.api.nvim_win_get_cursor(0)[1] - 1
+    if #vim.diagnostic.get(bufnr, { lnum = lnum }) == 0 then
+        return false
+    end
+
+    vim.diagnostic.open_float(bufnr, {
+        scope = "cursor",
+        border = "rounded",
+        focusable = false,
+        close_events = { "BufLeave", "CursorMoved", "InsertEnter", "FocusLost" },
+        source = "always",
+        severity_sort = true,
+        prefix = function(_, i, total)
+            return total > 1 and ("[" .. i .. "/" .. total .. "] ") or ""
+        end,
+    })
+    return true
+end
+
+vim.diagnostic.config({
+    virtual_text = {
+        -- While typing: inline text only on the cursor line (cheap).
+        -- In normal mode: inline text on every diagnostic line.
+        current_line = true,
+        format = function(diagnostic)
+            return diagnostic_short_message(diagnostic.message, 48)
+        end,
+        severity_sort = true,
+        source = false,
+        prefix = "",
+    },
+    signs = {
+        text = {
+            [vim.diagnostic.severity.ERROR] = "●",
+            [vim.diagnostic.severity.WARN] = "●",
+            [vim.diagnostic.severity.INFO] = "●",
+            [vim.diagnostic.severity.HINT] = "●",
+        },
+        numhl = {
+            [vim.diagnostic.severity.ERROR] = "DiagnosticLineNrError",
+            [vim.diagnostic.severity.WARN] = "DiagnosticLineNrWarn",
+            [vim.diagnostic.severity.INFO] = "DiagnosticLineNrInfo",
+            [vim.diagnostic.severity.HINT] = "DiagnosticLineNrHint",
+        },
+    },
+    underline = { severity = { min = vim.diagnostic.severity.HINT } },
+    float = { border = "rounded", source = "always", severity_sort = true },
+    update_in_insert = true,
+    severity_sort = true,
+})
+
+vim.api.nvim_set_hl(0, "DiagnosticLineNrError", { fg = "#f38ba8", bold = true })
+vim.api.nvim_set_hl(0, "DiagnosticLineNrWarn", { fg = "#fab387", bold = true })
+vim.api.nvim_set_hl(0, "DiagnosticLineNrInfo", { fg = "#89b4fa", bold = true })
+vim.api.nvim_set_hl(0, "DiagnosticLineNrHint", { fg = "#a6adc8", bold = true })
+vim.api.nvim_set_hl(0, "DiagnosticVirtualTextError", { fg = "#f38ba8", italic = true })
+vim.api.nvim_set_hl(0, "DiagnosticVirtualTextWarn", { fg = "#fab387", italic = true })
+vim.api.nvim_set_hl(0, "DiagnosticVirtualTextInfo", { fg = "#89b4fa", italic = true })
+vim.api.nvim_set_hl(0, "DiagnosticVirtualTextHint", { fg = "#a6adc8", italic = true })
+
 -- 2. GLOBAL INTUITIVE KEYMAPS (Works everywhere, no LSP dependency needed)
 vim.keymap.set("n", "|", "<cmd>vsplit<CR>", { desc = "Split Window Vertically" })
 vim.keymap.set("n", "_", "<cmd>split<CR>", { desc = "Split Window Horizontally" })
@@ -119,7 +189,11 @@ local function lsp_on_attach(client, bufnr)
     vim.keymap.set("n", "gr", ts_builtin.lsp_references, opts)
     vim.keymap.set("n", "gi", ts_builtin.lsp_implementations, opts)
     vim.keymap.set("n", "gt", ts_builtin.lsp_type_definitions, opts)
-    vim.keymap.set("n", "K", vim.lsp.buf.hover, opts)
+    vim.keymap.set("n", "K", function()
+        if not show_diagnostic_detail() then
+            vim.lsp.buf.hover()
+        end
+    end, vim.tbl_extend("force", opts, { desc = "Shift+K: Diagnostic Detail or LSP Hover" }))
     vim.keymap.set("n", "<C-k>", vim.lsp.buf.signature_help, opts)
     vim.keymap.set("i", "<C-k>", vim.lsp.buf.signature_help, opts)
     vim.keymap.set("n", "<leader>ls", ts_builtin.lsp_document_symbols, { buffer = bufnr, desc = "Document Symbols" })
@@ -548,15 +622,10 @@ vim.api.nvim_set_hl(0, "LspInlayHint", { fg = "#545464", bg = "NONE", italic = t
 
 vim.api.nvim_create_autocmd("CursorHold", {
     callback = function()
-        local opts = {
-            focusable = false,
-            close_events = { "BufLeave", "CursorMoved", "InsertEnter", "FocusLost" },
-            border = "rounded",
-            source = "always",
-            prefix = " ",
-            scope = "cursor",
-        }
-        vim.diagnostic.open_float(nil, opts)
+        if vim.bo.buftype ~= "" or vim.bo.filetype == "help" then
+            return
+        end
+        show_diagnostic_detail()
     end,
 })
 
