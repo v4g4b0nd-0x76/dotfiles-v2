@@ -110,6 +110,44 @@ if not vim.loop.fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
+local function lsp_on_attach(client, bufnr)
+    local opts = { buffer = bufnr }
+    local ts_builtin = require("telescope.builtin")
+
+    vim.keymap.set("n", "gd", ts_builtin.lsp_definitions, opts)
+    vim.keymap.set("n", "gD", vim.lsp.buf.declaration, opts)
+    vim.keymap.set("n", "gr", ts_builtin.lsp_references, opts)
+    vim.keymap.set("n", "gi", ts_builtin.lsp_implementations, opts)
+    vim.keymap.set("n", "gt", ts_builtin.lsp_type_definitions, opts)
+    vim.keymap.set("n", "K", vim.lsp.buf.hover, opts)
+    vim.keymap.set("n", "<C-k>", vim.lsp.buf.signature_help, opts)
+    vim.keymap.set("i", "<C-k>", vim.lsp.buf.signature_help, opts)
+    vim.keymap.set("n", "<leader>ls", ts_builtin.lsp_document_symbols, { buffer = bufnr, desc = "Document Symbols" })
+    vim.keymap.set("n", "<leader>lw", ts_builtin.lsp_workspace_symbols, { desc = "Workspace Symbols" })
+    vim.keymap.set("n", "<leader>la", vim.lsp.buf.code_action, { buffer = bufnr, desc = "LSP Code Actions" })
+    vim.keymap.set("n", "<leader>ln", vim.lsp.buf.rename, { buffer = bufnr, desc = "Rename Symbol" })
+    vim.keymap.set("n", "<leader>lf", function()
+        vim.lsp.buf.format({ bufnr = bufnr, id = client.id, async = false })
+    end, { buffer = bufnr, desc = "Format Buffer" })
+    vim.keymap.set("n", "<leader>li", function()
+        vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled({ bufnr = bufnr }), { bufnr = bufnr })
+    end, { buffer = bufnr, desc = "Toggle Inlay Hints" })
+    vim.keymap.set("n", "<leader>lr", "<cmd>LspRestart<CR>", { buffer = bufnr, desc = "Restart LSP" })
+
+    if client:supports_method("textDocument/inlayHint") then
+        vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
+    end
+
+    if client:supports_method("textDocument/formatting") then
+        vim.api.nvim_create_autocmd("BufWritePre", {
+            buffer = bufnr,
+            callback = function()
+                vim.lsp.buf.format({ bufnr = bufnr, id = client.id, async = false })
+            end,
+        })
+    end
+end
+
 -- 4. PLUGIN DEFINITIONS & CONFIGURATIONS
 require("lazy").setup({
 
@@ -526,26 +564,8 @@ vim.api.nvim_create_autocmd("LspAttach", {
     group = vim.api.nvim_create_augroup("UserLspConfig", {}),
     callback = function(ev)
         local client = vim.lsp.get_client_by_id(ev.data.client_id)
-        local opts = { buffer = ev.buf }
-        local ts_builtin = require("telescope.builtin")
-
-        vim.keymap.set("n", "gd", ts_builtin.lsp_definitions, opts)
-        vim.keymap.set("n", "gr", ts_builtin.lsp_references, opts)
-        vim.keymap.set("n", "K", vim.lsp.buf.hover, opts)
-        vim.keymap.set("n", "<leader>la", vim.lsp.buf.code_action, { buffer = ev.buf, desc = "LSP code actions" })
-        vim.keymap.set("n", "<leader>ln", vim.lsp.buf.rename, { buffer = ev.buf, desc = "Rename Symbol Usage" })
-
-        if client and client:supports_method("textDocument/inlayHint") then
-            vim.lsp.inlay_hint.enable(true, { bufnr = ev.buf })
-        end
-
-        if client and client:supports_method("textDocument/formatting") then
-            vim.api.nvim_create_autocmd("BufWritePre", {
-                buffer = ev.buf,
-                callback = function()
-                    vim.lsp.buf.format({ bufnr = ev.buf, id = client.id })
-                end,
-            })
+        if client then
+            lsp_on_attach(client, ev.buf)
         end
     end,
 })
