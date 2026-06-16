@@ -29,43 +29,46 @@ local function diagnostic_short_message(message, max_len)
     end
     return text
 end
-
--- FIXED SHIFT+K INTERACTIVE HOVER DIALOG RE-ROUTING (CRASH-PROOF)
 local function show_diagnostic_detail()
     local bufnr = vim.api.nvim_get_current_buf()
     local lnum = vim.api.nvim_win_get_cursor(0)[1] - 1
-    if #vim.diagnostic.get(bufnr, { lnum = lnum }) == 0 then
+    local diagnostics = vim.diagnostic.get(bufnr, { lnum = lnum })
+
+    if #diagnostics == 0 then
         return false
     end
 
-    -- 1. Safely generate the floating diagnostic canvas
-    local _, float_win = vim.diagnostic.open_float(bufnr, {
-        scope = "cursor",
-        border = "rounded",
-        focusable = true, -- Crucial: lets us jump inside
-        close_events = { "BufLeave", "CursorMoved", "InsertEnter", "FocusLost" },
-        source = "always",
-        severity_sort = true,
-        prefix = function(_, i, total)
-            return total > 1 and ("[" .. i .. "/" .. total .. "] ") or ""
-        end,
+    vim.cmd("belowright split")
+
+    local buf = vim.api.nvim_create_buf(false, true)
+
+    local lines = {}
+
+    for i, diag in ipairs(diagnostics) do
+        table.insert(lines, ("[%d] %s"):format(i, diag.message))
+        table.insert(lines, "")
+    end
+
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+    vim.bo[buf].buftype = "nofile"
+    vim.bo[buf].bufhidden = "wipe"
+    vim.bo[buf].swapfile = false
+
+    vim.api.nvim_win_set_buf(0, buf)
+
+    vim.keymap.set("n", "q", "<cmd>close<CR>", {
+        buffer = buf,
+        silent = true,
     })
 
-    -- 2. Validate that the window handle exists and is healthy before jumping focus
-    if float_win and vim.api.nvim_win_is_valid(float_win) then
-        vim.api.nvim_set_current_win(float_win)
-        -- Instantly leave the dialog panel via 'q'
-        vim.keymap.set("n", "q", "<cmd>close<CR>", { buffer = true, silent = true })
-    else
-        -- Fallback: Use standard window jump macro if the direct API reference fails
-        local success, _ = pcall(vim.cmd, "wincmd p")
-        if success and vim.bo.filetype == "lspinfo" or vim.bo.buftype == "nofile" then
-            vim.keymap.set("n", "q", "<cmd>close<CR>", { buffer = true, silent = true })
-        end
-    end
     return true
 end
-
+vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter" }, {
+    callback = function()
+        vim.cmd("checktime")
+    end,
+})
 vim.diagnostic.config({
     virtual_text = {
         current_line = true,
@@ -75,6 +78,7 @@ vim.diagnostic.config({
         severity_sort = true,
         source = false,
         prefix = "",
+        update_in_insert = false,
     },
     signs = {
         text = {
@@ -302,13 +306,11 @@ local function lsp_on_attach(client, bufnr)
     vim.keymap.set("n", "gr", ts_builtin.lsp_references, opts)
     vim.keymap.set("n", "gi", ts_builtin.lsp_implementations, opts)
     vim.keymap.set("n", "gt", ts_builtin.lsp_type_definitions, opts)
-    
-    -- Linked dynamically to updated text-copy routing float window
     vim.keymap.set("n", "K", function()
-        if not show_diagnostic_detail() then
-            vim.lsp.buf.hover()
-        end
-    end, vim.tbl_extend("force", opts, { desc = "Shift+K: Diagnostic Detail or LSP Hover" }))
+    if not show_diagnostic_detail() then
+        vim.lsp.buf.hover()
+    end
+end, { buffer = bufnr })
     
     vim.keymap.set("n", "<C-k>", vim.lsp.buf.signature_help, opts)
     vim.keymap.set("i", "<C-k>", vim.lsp.buf.signature_help, opts)
@@ -613,24 +615,16 @@ require("lazy").setup({
             require("mason").setup()
         end,
     },
-    {
-        "williamboman/mason-lspconfig.nvim",
-        config = function()
-            local capabilities = require("blink.cmp").get_lsp_capabilities()
+{
+    "williamboman/mason-lspconfig.nvim",
+    dependencies = {
+        "neovim/nvim-lspconfig",
+    },
+    config = function()
+        local capabilities = require("blink.cmp").get_lsp_capabilities()
 
-            require("mason-lspconfig").setup({
-                ensure_installed = {
-                    "rust_analyzer",
-                    "gopls",
-                    "lua_ls",
-                    "ts_ls",
-                    "bashls",
-                    "dockerls",
-                    "marksman",
-                },
-            })
-
-            local servers = {
+        require("mason-lspconfig").setup({
+            ensure_installed = {
                 "rust_analyzer",
                 "gopls",
                 "lua_ls",
@@ -638,18 +632,26 @@ require("lazy").setup({
                 "bashls",
                 "dockerls",
                 "marksman",
-            }
+            },
+        })
 
-            for _, server in ipairs(servers) do
-                vim.lsp.config(server, { capabilities = capabilities })
-                vim.lsp.enable(server)
-            end
+        local servers = {
+            lua_ls = {
+                settings = {
+                    Lua = {
+                        diagnostics = {
+                            globals = { "vim" },
+                        },
+                    },
+                },
+            },
 
-            vim.lsp.config("ts_ls", {
-                capabilities = capabilities,
+            ts_ls = {
                 settings = {
                     typescript = {
-                        suggest = { completeFunctionCalls = true },
+                        suggest = {
+                            completeFunctionCalls = true,
+                        },
                         inlayHints = {
                             includeInlayParameterNameHints = "all",
                             includeInlayFunctionParameterTypeHints = true,
@@ -659,9 +661,23 @@ require("lazy").setup({
                         },
                     },
                 },
-            })
-        end,
-    },
+            },
+
+            rust_analyzer = {},
+            gopls = {},
+            bashls = {},
+            dockerls = {},
+            marksman = {},
+        }
+
+        for server, config in pairs(servers) do
+            config.capabilities = capabilities
+
+            vim.lsp.config(server, config)
+            vim.lsp.enable(server)
+        end
+    end,
+},
     {
         "saghen/blink.cmp",
         version = "*",
@@ -672,8 +688,17 @@ require("lazy").setup({
         opts = {
             keymap = {
                 preset = "enter",
-                ["<Tab>"] = { "select_next", "fallback" },
-                ["<S-Tab>"] = { "select_prev", "fallback" },
+                ["<Tab>"] = {
+    "snippet_forward",
+    "select_next",
+    "fallback",
+},
+
+["<S-Tab>"] = {
+    "snippet_backward",
+    "select_prev",
+    "fallback",
+},
                 ["<C-Space>"] = { "show", "show_documentation", "hide_documentation" },
             },
             appearance = {
@@ -693,6 +718,12 @@ require("lazy").setup({
                         },
                     },
                 },
+                  list = {
+        selection = {
+            preselect = true,
+            auto_insert = false,
+        },
+    },
             },
             signature = { enabled = true },
             sources = { default = { "lsp", "path", "snippets", "buffer" } },
@@ -707,7 +738,28 @@ require("lazy").setup({
 -- ========================================================================== --
 
 vim.api.nvim_set_hl(0, "LspInlayHint", { fg = "#545464", bg = "NONE", italic = true })
+vim.api.nvim_create_user_command("LspRestart", function()
+    local clients = vim.lsp.get_clients({ bufnr = 0 })
 
+    for _, client in ipairs(clients) do
+        vim.lsp.stop_client(client.id, true)
+    end
+
+    vim.defer_fn(function()
+        vim.cmd("edit")
+    end, 500)
+end, {})
+vim.api.nvim_create_autocmd("LspDetach", {
+    callback = function(args)
+        vim.defer_fn(function()
+            local bufnr = args.buf
+
+            if vim.api.nvim_buf_is_valid(bufnr) then
+                vim.cmd("silent edit")
+            end
+        end, 1000)
+    end,
+})
 vim.api.nvim_create_autocmd("CursorHold", {
     callback = function()
         if vim.bo.buftype ~= "" or vim.bo.filetype == "help" then
@@ -734,7 +786,6 @@ vim.api.nvim_create_autocmd("LspAttach", {
     callback = function(args)
         local client = vim.lsp.get_client_by_id(args.data.client_id)
         if client then
-            vim.notify(client.name .. " ready", vim.log.levels.INFO)
             lsp_on_attach(client, args.buf)
         end
     end,
