@@ -38,68 +38,27 @@ local function show_diagnostic_detail()
         return false
     end
 
-    vim.cmd("belowright split")
-
-    local buf = vim.api.nvim_create_buf(false, true)
-
     local lines = {}
-
     for i, diag in ipairs(diagnostics) do
         table.insert(lines, ("[%d] %s"):format(i, diag.message))
         table.insert(lines, "")
     end
 
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-
-    vim.bo[buf].buftype = "nofile"
-    vim.bo[buf].bufhidden = "wipe"
-    vim.bo[buf].swapfile = false
-
-    vim.api.nvim_win_set_buf(0, buf)
-
-    vim.keymap.set("n", "q", "<cmd>close<CR>", {
-        buffer = buf,
-        silent = true,
+    vim.diagnostic.open_float(bufnr, {
+        scope = "cursor",
+        border = "rounded",
+        focusable = true,
+        close_events = { "BufLeave", "CursorMoved", "InsertEnter", "FocusLost" },
+        source = "always",
+        severity_sort = true,
+        header = "Diagnostics",
+        format = function(diagnostic)
+            return diagnostic.message
+        end,
     })
-
+    
     return true
 end
-vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter" }, {
-    callback = function()
-        vim.cmd("checktime")
-    end,
-})
-vim.diagnostic.config({
-    virtual_text = {
-        current_line = true,
-        format = function(diagnostic)
-            return diagnostic_short_message(diagnostic.message, 48)
-        end,
-        severity_sort = true,
-        source = false,
-        prefix = "",
-        update_in_insert = false,
-    },
-    signs = {
-        text = {
-            [vim.diagnostic.severity.ERROR] = "●",
-            [vim.diagnostic.severity.WARN] = "●",
-            [vim.diagnostic.severity.INFO] = "●",
-            [vim.diagnostic.severity.HINT] = "●",
-        },
-        numhl = {
-            [vim.diagnostic.severity.ERROR] = "DiagnosticLineNrError",
-            [vim.diagnostic.severity.WARN] = "DiagnosticLineNrWarn",
-            [vim.diagnostic.severity.INFO] = "DiagnosticLineNrInfo",
-            [vim.diagnostic.severity.HINT] = "DiagnosticLineNrHint",
-        },
-    },
-    underline = { severity = { min = vim.diagnostic.severity.HINT } },
-    float = { border = "rounded", source = "always", severity_sort = true },
-    update_in_insert = true,
-    severity_sort = true,
-})
-
 vim.api.nvim_set_hl(0, "DiagnosticLineNrError", { fg = "#f38ba8", bold = true })
 vim.api.nvim_set_hl(0, "DiagnosticLineNrWarn", { fg = "#fab387", bold = true })
 vim.api.nvim_set_hl(0, "DiagnosticLineNrInfo", { fg = "#89b4fa", bold = true })
