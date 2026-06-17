@@ -116,7 +116,7 @@ local function open_diagnostic_explorer()
     vim.cmd("NvimTreeClose")
     
     require("telescope.builtin").diagnostics({
-        layout_strategy = "left_sidebar",
+        layout_strategy = "flex",
         layout_config = { width = 0.28 },
         attach_mappings = function(prompt_bufnr, map)
             local actions = require("telescope.actions")
@@ -139,15 +139,7 @@ local function open_diagnostic_explorer()
                 
                 local clean_message = "[" .. selection.type .. "] " .. selection.text:gsub("\n%s*", " ")
                 vim.api.nvim_buf_set_lines(diag_buf, 0, -1, false, {
-                    "==========================================================================",
-                    "💥 CRITICAL DIAGNOSTIC ENTRY LOG",
-                    "==========================================================================",
-                    "📂 File: " .. selection.filename,
-                    "📍 Location: Line " .. (selection.lnum + 1) .. ", Col " .. selection.col,
-                    "--------------------------------------------------------------------------",
                     clean_message,
-                    "==========================================================================",
-                    "💡 Press 'q' inside this split layout array to terminate the buffer.",
                 })
                 
                 vim.api.nvim_set_current_buf(diag_buf)
