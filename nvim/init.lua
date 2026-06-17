@@ -1,25 +1,21 @@
 -- ========================================================================== --
--- [[                         STRUCTURED NVIM CONFIG                       ]] --
+-- [[                        STRUCTURED NVIM CONFIG                        ]] --
 -- ========================================================================== --
 
 -- 1. BASE SYSTEM SETTINGS (Performance & Behavioral adjustments)
-vim.g.mapleader = " " -- Set Space bar as your 'Leader' key
+vim.g.mapleader = " "
 
 local opt = vim.opt
-opt.number = true -- Show line numbers
-opt.relativenumber = true -- Relative line numbers
-opt.termguicolors = true -- True color support
-opt.clipboard = "unnamedplus" -- Share system clipboard natively
-opt.signcolumn = "yes" -- Always show the sign column to prevent layout shifts
-opt.updatetime = 300 -- Faster completion & hover diagnostic response time
-opt.tabstop = 4 -- Render tabs as 4 spaces
-opt.shiftwidth = 4 -- Number of spaces for auto-indentation
-opt.expandtab = true -- Expand tabs into spaces
-
--- Prevent Neovim from automatically equalizing/resizing your panels when splitting
+opt.number = true
+opt.relativenumber = true
+opt.termguicolors = true
+opt.clipboard = "unnamedplus"
+opt.signcolumn = "yes"
+opt.updatetime = 300
+opt.tabstop = 4
+opt.shiftwidth = 4
+opt.expandtab = true
 opt.equalalways = false
-
--- Configure Session Saver engine to preserve sizes and buffers perfectly
 opt.sessionoptions = "blank,buffers,curdir,folds,help,tabpages,winsize"
 
 local function diagnostic_short_message(message, max_len)
@@ -29,6 +25,7 @@ local function diagnostic_short_message(message, max_len)
     end
     return text
 end
+
 local function show_diagnostic_detail()
     local bufnr = vim.api.nvim_get_current_buf()
     local lnum = vim.api.nvim_win_get_cursor(0)[1] - 1
@@ -36,12 +33,6 @@ local function show_diagnostic_detail()
 
     if #diagnostics == 0 then
         return false
-    end
-
-    local lines = {}
-    for i, diag in ipairs(diagnostics) do
-        table.insert(lines, ("[%d] %s"):format(i, diag.message))
-        table.insert(lines, "")
     end
 
     vim.diagnostic.open_float(bufnr, {
@@ -59,6 +50,7 @@ local function show_diagnostic_detail()
     
     return true
 end
+
 vim.api.nvim_set_hl(0, "DiagnosticLineNrError", { fg = "#f38ba8", bold = true })
 vim.api.nvim_set_hl(0, "DiagnosticLineNrWarn", { fg = "#fab387", bold = true })
 vim.api.nvim_set_hl(0, "DiagnosticLineNrInfo", { fg = "#89b4fa", bold = true })
@@ -68,8 +60,7 @@ vim.api.nvim_set_hl(0, "DiagnosticVirtualTextWarn", { fg = "#fab387", italic = t
 vim.api.nvim_set_hl(0, "DiagnosticVirtualTextInfo", { fg = "#89b4fa", italic = true })
 vim.api.nvim_set_hl(0, "DiagnosticVirtualTextHint", { fg = "#a6adc8", italic = true })
 
--- 2. GLOBAL INTUITIVE KEYMAPS (Works everywhere, no LSP dependency needed)
-
+-- 2. GLOBAL INTUITIVE KEYMAPS
 vim.keymap.set("n", "|", function()
     require("telescope.builtin").find_files({
         attach_mappings = function(prompt_bufnr, map)
@@ -110,32 +101,17 @@ vim.keymap.set("n", "_", function()
     })
 end, { desc = "Find File and Split Horizontally" })
 
--- Direct directional navigation (Ctrl + Arrows)
 vim.keymap.set("n", "<C-Left>", "<C-w>h", { desc = "Navigate to Left Window" })
 vim.keymap.set("n", "<C-Right>", "<C-w>l", { desc = "Navigate to Right Window" })
 vim.keymap.set("n", "<C-Up>", "<C-w>k", { desc = "Navigate to Upper Window" })
 vim.keymap.set("n", "<C-Down>", "<C-w>j", { desc = "Navigate to Lower Window" })
-
--- VS Code style Redo mapping (Ctrl + Shift + Z)
 vim.keymap.set("n", "<C-S-z>", "<C-r>", { desc = "Redo Last Undo" })
-
--- Save session layout snapshot and Force Quit Neovim instantly (Ctrl + Q)
 vim.keymap.set("n", "<C-q>", "<cmd>mksession! .nvim_session | qa!<CR>", { desc = "Save Session and Quit Instantly" })
-
--- Terminal-Native Live Markdown Preview Split (Space + m + p)
 vim.keymap.set("n", "<leader>mp", "<cmd>RenderMarkdown preview<CR>", { desc = "Open Terminal-Native Markdown Preview" })
 
--- Structural Diagnostics Window Triggers
-vim.keymap.set(
-    "n",
-    "<leader>df",
-    "<cmd>Telescope diagnostics bufnr=0<CR>",
-    { desc = "Fuzzy Find Current File Diagnostics" }
-)
+vim.keymap.set("n", "<leader>df", "<cmd>Telescope diagnostics bufnr=0<CR>", { desc = "Fuzzy Find Current File Diagnostics" })
 vim.keymap.set("n", "<leader>dw", "<cmd>Telescope diagnostics<CR>", { desc = "Fuzzy Find Workspace Diagnostics" })
 
-
--- THREE-PANEL DYNAMIC DIAGNOSTIC EXPLORER LAYOUT ENGINE
 local function open_diagnostic_explorer()
     vim.cmd("NvimTreeClose")
     
@@ -152,13 +128,11 @@ local function open_diagnostic_explorer()
 
                 if not selection then return end
 
-                -- Panel B: Top-Right workspace (Focuses target file)
                 vim.cmd("edit " .. vim.fn.fnameescape(selection.filename))
                 local source_win = vim.api.nvim_get_current_win()
                 vim.api.nvim_win_set_cursor(source_win, { selection.lnum + 1, selection.col })
                 vim.keymap.set("n", "q", "<cmd>close<CR>", { buffer = true, silent = true })
 
-                -- Panel C: Bottom-Right terminal log window (Diagnostic raw text layout)
                 vim.cmd("belowright split")
                 local diag_buf = vim.api.nvim_create_buf(false, true)
                 vim.api.nvim_buf_set_name(diag_buf, "Diagnostics Output Engine")
@@ -179,11 +153,9 @@ local function open_diagnostic_explorer()
                 vim.api.nvim_set_current_buf(diag_buf)
                 vim.bo[diag_buf].modifiable = false
                 vim.bo[diag_buf].buftype = "nofile"
-                vim.cmd("resize 10") -- Keep bottom buffer thin and organized
+                vim.cmd("resize 10") 
 
                 vim.keymap.set("n", "q", "<cmd>close<CR>", { buffer = diag_buf, silent = true })
-                
-                -- Bounce window workspace anchor back up to code panel automatically
                 vim.api.nvim_set_current_win(source_win)
             end
 
@@ -195,8 +167,6 @@ local function open_diagnostic_explorer()
 end
 vim.keymap.set("n", "<leader>de", open_diagnostic_explorer, { desc = "Open 3-Panel Diagnostics Workspace" })
 
-
--- Smart Terminal Logic Function (Dynamic Horizontal/Vertical Routing)
 local function open_smart_terminal()
     if vim.bo.filetype == "NvimTree" then
         vim.cmd("wincmd l")
@@ -235,16 +205,15 @@ local function open_smart_terminal()
 end
 vim.keymap.set("n", "<leader>t", open_smart_terminal, { desc = "Open Layout-Aware Terminal" })
 
--- Terminal Mode Window Controls
 vim.keymap.set("t", "<C-Left>", [[<C-\><C-n><C-w>h]], { desc = "Navigate Left from Terminal" })
 vim.keymap.set("t", "<C-Right>", [[<C-\><C-n><C-w>l]], { desc = "Navigate Right from Terminal" })
 vim.keymap.set("t", "<C-Up>", [[<C-\><C-n><C-w>k]], { desc = "Navigate Upper from Terminal" })
 vim.keymap.set("t", "<C-Down>", [[<C-\><C-n><C-w>j]], { desc = "Navigate Lower from Terminal" })
 vim.keymap.set("t", "<C-w>", [[<C-\><C-n><C-w>]], { desc = "Allow Ctrl+W window navigation inside terminal" })
 
--- 3. AUTOMATIC PLUGIN MANAGER BOOTSTRAP (Zero-Setup Deployment)
+-- 3. AUTOMATIC PLUGIN MANAGER BOOTSTRAP
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
-if not vim.loop.fs_stat(lazypath) then
+if not vim.uv.fs_stat(lazypath) then -- Updated vim.loop to modern vim.uv
     vim.fn.system({
         "git",
         "clone",
@@ -265,11 +234,12 @@ local function lsp_on_attach(client, bufnr)
     vim.keymap.set("n", "gr", ts_builtin.lsp_references, opts)
     vim.keymap.set("n", "gi", ts_builtin.lsp_implementations, opts)
     vim.keymap.set("n", "gt", ts_builtin.lsp_type_definitions, opts)
+    
     vim.keymap.set("n", "K", function()
-    if not show_diagnostic_detail() then
-        vim.lsp.buf.hover()
-    end
-end, { buffer = bufnr })
+        if not show_diagnostic_detail() then
+            vim.lsp.buf.hover()
+        end
+    end, { buffer = bufnr })
     
     vim.keymap.set("n", "<C-k>", vim.lsp.buf.signature_help, opts)
     vim.keymap.set("i", "<C-k>", vim.lsp.buf.signature_help, opts)
@@ -283,7 +253,6 @@ end, { buffer = bufnr })
     vim.keymap.set("n", "<leader>li", function()
         vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled({ bufnr = bufnr }), { bufnr = bufnr })
     end, { buffer = bufnr, desc = "Toggle Inlay Hints" })
-    vim.keymap.set("n", "<leader>lr", "<cmd>LspRestart<CR>", { buffer = bufnr, desc = "Restart LSP" })
 
     if client:supports_method("textDocument/inlayHint") then
         vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
@@ -292,10 +261,7 @@ end
 
 -- 4. PLUGIN DEFINITIONS & CONFIGURATIONS
 require("lazy").setup({
-    {
-        "j-hui/fidget.nvim",
-        opts = {},
-    },
+    { "j-hui/fidget.nvim", opts = {} },
     {
         "ember-theme/nvim",
         name = "ember",
@@ -316,21 +282,12 @@ require("lazy").setup({
     },
     {
         "romgrk/barbar.nvim",
-        dependencies = {
-            "lewis6991/gitsigns.nvim",
-            "nvim-tree/nvim-web-devicons",
-        },
-        init = function()
-            vim.g.barbar_auto_setup = false
-        end,
+        dependencies = { "lewis6991/gitsigns.nvim", "nvim-tree/nvim-web-devicons" },
+        init = function() vim.g.barbar_auto_setup = false end,
         opts = {},
         version = "^1.0.0",
     },
-    {
-        "windwp/nvim-autopairs",
-        event = "InsertEnter",
-        config = true,
-    },
+    { "windwp/nvim-autopairs", event = "InsertEnter", config = true },
     {
         "MeanderingProgrammer/render-markdown.nvim",
         dependencies = { "nvim-treesitter/nvim-treesitter" },
@@ -341,13 +298,7 @@ require("lazy").setup({
                     sign = false,
                     icons = { "━ H1 ━ ", "─ H2 ─ ", "─ H3 ─ ", "─ H4 ─ " },
                 },
-                code = {
-                    style = "full",
-                    position = "left",
-                    width = "block",
-                    left_pad = 2,
-                    right_pad = 4,
-                },
+                code = { style = "full", position = "left", width = "block", left_pad = 2, right_pad = 4 },
                 pipe_table = { preset = "round" },
             })
         end,
@@ -355,10 +306,7 @@ require("lazy").setup({
     {
         "mg979/vim-visual-multi",
         init = function()
-            vim.g.VM_maps = {
-                ["Find Under"] = "<C-d>",
-                ["Find Subword Under"] = "<C-d>",
-            }
+            vim.g.VM_maps = { ["Find Under"] = "<C-d>", ["Find Subword Under"] = "<C-d>" }
         end,
     },
     {
@@ -368,12 +316,7 @@ require("lazy").setup({
             local builtin = require("telescope.builtin")
             vim.keymap.set("n", "<leader>ff", builtin.find_files, { desc = "Search Files by Name" })
             vim.keymap.set("n", "<leader>fg", builtin.live_grep, { desc = "Search Text in Whole Project" })
-            vim.keymap.set(
-                "n",
-                "<leader>fb",
-                builtin.current_buffer_fuzzy_find,
-                { desc = "Search Text in Current File" }
-            )
+            vim.keymap.set("n", "<leader>fb", builtin.current_buffer_fuzzy_find, { desc = "Search Text in Current File" })
         end,
     },
     {
@@ -384,14 +327,7 @@ require("lazy").setup({
             open_no_results = true,
             height = 12,
             icons = {
-                indent = {
-                    top = "│ ",
-                    middle = "├─ ",
-                    last = "└─ ",
-                    fold_open = "▼ ",
-                    fold_closed = "▶ ",
-                    ws = "  ",
-                },
+                indent = { top = "│ ", middle = "├─ ", last = "└─ ", fold_open = "▼ ", fold_closed = "▶ ", ws = "  " },
                 kinds = {},
             },
             styles = { mode = { groups = { { "filename", "comment" } } } },
@@ -402,12 +338,8 @@ require("lazy").setup({
         config = function()
             require("gitsigns").setup({
                 signs = {
-                    add = { text = "┃" },
-                    change = { text = "┃" },
-                    delete = { text = "_" },
-                    topdelete = { text = "‾" },
-                    changedelete = { text = "~" },
-                    untracked = { text = "┆" },
+                    add = { text = "┃" }, change = { text = "┃" }, delete = { text = "_" },
+                    topdelete = { text = "‾" }, changedelete = { text = "~" }, untracked = { text = "┆" },
                 },
                 signcolumn = true,
                 watch_gitdir = { interval = 1000, follow_files = true },
@@ -428,21 +360,13 @@ require("lazy").setup({
                     file_history = { layout = "diff2_horizontal" },
                     merge_tool = { layout = "diff3_horizontal", disable_diagnostics = true },
                 },
-                file_history_panel = {
-                    win_config = {
-                        position = "bottom",
-                        height = 16,
-                    },
-                },
+                file_history_panel = { win_config = { position = "bottom", height = 16 } },
                 hooks = {
                     diff_buf_win_enter = function(bufnr, winid, ctx)
                         vim.wo[winid].foldenable = false
                         vim.wo[winid].foldmethod = "manual"
-
                         if ctx and ctx.view and ctx.view.type == "file_history" and vim.bo[bufnr].modifiable then
-                            vim.api.nvim_win_call(winid, function()
-                                vim.cmd("wincmd H")
-                            end)
+                            vim.api.nvim_win_call(winid, function() vim.cmd("wincmd H") end)
                         end
                     end,
                 },
@@ -455,11 +379,7 @@ require("lazy").setup({
 
             local function open_commit_picker_diff()
                 local has_telescope, telescope_builtin = pcall(require, "telescope.builtin")
-                if not has_telescope then
-                    vim.notify("Telescope core is required to load the Git Selector UI.", vim.log.levels.ERROR)
-                    return
-                end
-
+                if not has_telescope then return end
                 local actions = require("telescope.actions")
                 local action_state = require("telescope.actions.state")
 
@@ -483,7 +403,6 @@ require("lazy").setup({
                 local checkout_out = vim.fn.system("git checkout .")
                 if vim.v.shell_error ~= 0 then
                     vim.notify("Git Checkout Failed:\n" .. checkout_out, vim.log.levels.ERROR)
-                    return
                 end
             end
 
@@ -500,9 +419,7 @@ require("lazy").setup({
         "nvim-tree/nvim-tree.lua",
         config = function()
             require("nvim-tree").setup({
-                renderer = {
-                    icons = { show = { file = false, folder = false, folder_arrow = false, git = false } },
-                },
+                renderer = { icons = { show = { file = false, folder = false, folder_arrow = false, git = false } } },
                 actions = {
                     open_file = {
                         quit_on_open = false,
@@ -562,6 +479,7 @@ require("lazy").setup({
                 javascriptreact = { "prettierd" },
                 rust = { "rustfmt" },
                 go = { "gofmt" },
+                c = { "clang-format" }, -- Added C since you write system languages
                 sh = { "shfmt" },
                 markdown = { "prettierd" },
             },
@@ -570,94 +488,57 @@ require("lazy").setup({
     {
         "williamboman/mason.nvim",
         build = ":MasonUpdate",
+        config = function() require("mason").setup() end,
+    },
+    {
+        "williamboman/mason-lspconfig.nvim",
+        dependencies = { "neovim/nvim-lspconfig" },
         config = function()
-            require("mason").setup()
+            local capabilities = require("blink.cmp").get_lsp_capabilities()
+
+            require("mason-lspconfig").setup({
+                ensure_installed = { "rust_analyzer", "gopls", "lua_ls", "ts_ls", "bashls", "dockerls", "marksman" },
+            })
+
+            local servers = {
+                lua_ls = { settings = { Lua = { diagnostics = { globals = { "vim" } } } } },
+                ts_ls = {
+                    settings = {
+                        typescript = {
+                            suggest = { completeFunctionCalls = true },
+                            inlayHints = {
+                                includeInlayParameterNameHints = "all",
+                                includeInlayFunctionParameterTypeHints = true,
+                                includeInlayVariableTypeHints = true,
+                                includeInlayPropertyDeclarationTypeHints = true,
+                                includeInlayFunctionLikeReturnTypeHints = true,
+                            },
+                        },
+                    },
+                },
+                rust_analyzer = {},
+                gopls = {},
+                bashls = {},
+                dockerls = {},
+                marksman = {},
+            }
+
+            for server, config in pairs(servers) do
+                config.capabilities = capabilities
+                vim.lsp.config(server, config)
+                vim.lsp.enable(server)
+            end
         end,
     },
-{
-    "williamboman/mason-lspconfig.nvim",
-    dependencies = {
-        "neovim/nvim-lspconfig",
-    },
-    config = function()
-        local capabilities = require("blink.cmp").get_lsp_capabilities()
-
-        require("mason-lspconfig").setup({
-            ensure_installed = {
-                "rust_analyzer",
-                "gopls",
-                "lua_ls",
-                "ts_ls",
-                "bashls",
-                "dockerls",
-                "marksman",
-            },
-        })
-
-        local servers = {
-            lua_ls = {
-                settings = {
-                    Lua = {
-                        diagnostics = {
-                            globals = { "vim" },
-                        },
-                    },
-                },
-            },
-
-            ts_ls = {
-                settings = {
-                    typescript = {
-                        suggest = {
-                            completeFunctionCalls = true,
-                        },
-                        inlayHints = {
-                            includeInlayParameterNameHints = "all",
-                            includeInlayFunctionParameterTypeHints = true,
-                            includeInlayVariableTypeHints = true,
-                            includeInlayPropertyDeclarationTypeHints = true,
-                            includeInlayFunctionLikeReturnTypeHints = true,
-                        },
-                    },
-                },
-            },
-
-            rust_analyzer = {},
-            gopls = {},
-            bashls = {},
-            dockerls = {},
-            marksman = {},
-        }
-
-        for server, config in pairs(servers) do
-            config.capabilities = capabilities
-
-            vim.lsp.config(server, config)
-            vim.lsp.enable(server)
-        end
-    end,
-},
     {
         "saghen/blink.cmp",
         version = "*",
-        dependencies = {
-            "rafamadriz/friendly-snippets",
-            "onsails/lspkind.nvim",
-        },
+        dependencies = { "rafamadriz/friendly-snippets", "onsails/lspkind.nvim" },
         opts = {
             keymap = {
                 preset = "enter",
-                ["<Tab>"] = {
-    "snippet_forward",
-    "select_next",
-    "fallback",
-},
-
-["<S-Tab>"] = {
-    "snippet_backward",
-    "select_prev",
-    "fallback",
-},
+                ["<Tab>"] = { "snippet_forward", "select_next", "fallback" },
+                ["<S-Tab>"] = { "snippet_backward", "select_prev", "fallback" },
                 ["<C-Space>"] = { "show", "show_documentation", "hide_documentation" },
             },
             appearance = {
@@ -677,12 +558,9 @@ require("lazy").setup({
                         },
                     },
                 },
-                  list = {
-        selection = {
-            preselect = true,
-            auto_insert = false,
-        },
-    },
+                list = {
+                    selection = { preselect = true, auto_insert = false },
+                },
             },
             signature = { enabled = true },
             sources = { default = { "lsp", "path", "snippets", "buffer" } },
@@ -693,45 +571,29 @@ require("lazy").setup({
 })
 
 -- ========================================================================== --
--- [[              VS CODE STYLE DIAGNOSTICS & HOVER BOXES                 ]] --
+-- [[             VS CODE STYLE DIAGNOSTICS & HOVER BOXES                 ]] --
 -- ========================================================================== --
 
 vim.api.nvim_set_hl(0, "LspInlayHint", { fg = "#545464", bg = "NONE", italic = true })
-vim.api.nvim_create_user_command("LspRestart", function()
-    local clients = vim.lsp.get_clients({ bufnr = 0 })
 
-    for _, client in ipairs(clients) do
-        vim.lsp.stop_client(client.id, true)
-    end
-
-    vim.defer_fn(function()
-        vim.cmd("edit")
-    end, 500)
-end, {})
-vim.api.nvim_create_autocmd("LspDetach", {
-    callback = function(args)
-        vim.defer_fn(function()
-            local bufnr = args.buf
-
-            if vim.api.nvim_buf_is_valid(bufnr) then
-                vim.cmd("silent edit")
-            end
-        end, 1000)
-    end,
-})
 vim.api.nvim_create_autocmd("CursorHold", {
     callback = function()
-        if vim.bo.buftype ~= "" or vim.bo.filetype == "help" then
-            return
+        if vim.bo.buftype ~= "" or vim.bo.filetype == "help" then return end
+        
+        -- Prevent flickering/lag by ensuring we don't open if a float is already active
+        for _, winid in pairs(vim.api.nvim_tabpage_list_wins(0)) do
+            if vim.api.nvim_win_get_config(winid).zindex then
+                return
+            end
         end
-        -- Maintain automated lookups via base config
+
         local bufnr = vim.api.nvim_get_current_buf()
         local lnum = vim.api.nvim_win_get_cursor(0)[1] - 1
         if #vim.diagnostic.get(bufnr, { lnum = lnum }) > 0 then
             vim.diagnostic.open_float(bufnr, {
                 scope = "cursor",
                 border = "rounded",
-                focusable = false, -- Background checks stay unfocused until Shift+K is hit
+                focusable = false,
                 close_events = { "BufLeave", "CursorMoved", "InsertEnter", "FocusLost" },
                 source = "always",
                 severity_sort = true,
