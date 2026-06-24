@@ -160,9 +160,6 @@ end
 
 -- 4. PLUGIN DEFINITIONS & CONFIGURATIONS
 require("lazy").setup({
-	{
-		"nvim-treesitter/nvim-treesitter-textobjects",
-	},
 	{ "j-hui/fidget.nvim", opts = {} },
 	-- {
 	--     "ember-theme/nvim",
@@ -216,6 +213,10 @@ require("lazy").setup({
 			})
 		end,
 	},
+    	{
+		"nvim-treesitter/nvim-treesitter-textobjects",
+	},
+
 	{
 		"smoka7/multicursors.nvim",
 		event = "VeryLazy",
@@ -551,34 +552,7 @@ vim.api.nvim_create_autocmd("CursorHold", {
 	end,
 })
 
-require("nvim-treesitter.configs").setup({
-	textobjects = {
-		move = {
-			enable = true,
 
-			goto_previous_start = {
-				["[m"] = "@function.outer",
-			},
-
-			goto_next_start = {
-				["]m"] = "@function.outer",
-			},
-
-			goto_previous_end = {
-				["[M"] = "@function.outer",
-			},
-
-			goto_next_end = {
-				["]M"] = "@function.outer",
-			},
-		},
-	},
-})
-
-vim.keymap.set("n", "[v", function()
-	vim.cmd("normal! Vaf")
-	vim.cmd("normal! y")
-end)
 vim.api.nvim_create_autocmd("LspAttach", {
 	group = vim.api.nvim_create_augroup("UserLspConfig", {}),
 	callback = function(args)
