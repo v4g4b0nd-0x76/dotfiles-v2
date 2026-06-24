@@ -21,6 +21,12 @@ vim.opt.splitright = true
 vim.opt.splitbelow = true
 vim.opt.ignorecase = true
 vim.opt.smartcase = true
+vim.opt.swapfile = false
+vim.opt.backup = false
+vim.opt.writebackup = false
+vim.opt.hidden = true
+vim.opt.autowrite = true
+
 
 vim.api.nvim_set_hl(0, "DiagnosticLineNrError", { fg = "#f38ba8", bold = true })
 vim.api.nvim_set_hl(0, "DiagnosticLineNrWarn", { fg = "#fab387", bold = true })
