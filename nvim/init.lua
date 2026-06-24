@@ -27,7 +27,6 @@ vim.opt.writebackup = false
 vim.opt.hidden = true
 vim.opt.autowrite = true
 
-
 vim.api.nvim_set_hl(0, "DiagnosticLineNrError", { fg = "#f38ba8", bold = true })
 vim.api.nvim_set_hl(0, "DiagnosticLineNrWarn", { fg = "#fab387", bold = true })
 vim.api.nvim_set_hl(0, "DiagnosticLineNrInfo", { fg = "#89b4fa", bold = true })
@@ -219,7 +218,7 @@ require("lazy").setup({
 			})
 		end,
 	},
-    	{
+	{
 		"nvim-treesitter/nvim-treesitter-textobjects",
 	},
 
@@ -470,7 +469,11 @@ require("lazy").setup({
 						},
 					},
 				},
-				rust_analyzer = {},
+				rust_analyzer = {
+					cargo = {
+						target = "x86_64-unknown-linux-gnu",
+					},
+				},
 				gopls = {},
 				bashls = {},
 				dockerls = {},
@@ -550,6 +553,7 @@ vim.api.nvim_create_autocmd("CursorHold", {
 				scope = "cursor",
 				border = "rounded",
 				focusable = false,
+                open_fold = true,
 				close_events = { "BufLeave", "CursorMoved", "InsertEnter", "FocusLost" },
 				source = "always",
 				severity_sort = true,
@@ -557,7 +561,6 @@ vim.api.nvim_create_autocmd("CursorHold", {
 		end
 	end,
 })
-
 
 vim.api.nvim_create_autocmd("LspAttach", {
 	group = vim.api.nvim_create_augroup("UserLspConfig", {}),
