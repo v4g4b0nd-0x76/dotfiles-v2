@@ -185,6 +185,37 @@ require("lazy").setup({
 	--     end,
 	-- },
 	{
+		"rebelot/kanagawa.nvim",
+		priority = 1000,
+		config = function()
+			vim.opt.termguicolors = true
+			vim.opt.background = "dark"
+
+			require("kanagawa").setup({
+				theme = "dragon",
+				transparent = false,
+				dimInactive = false,
+				terminalColors = true,
+				compile = true,
+				styles = {
+					comments = { italic = true },
+					keywords = { italic = true, bold = true },
+					functions = { bold = true },
+					variables = { bold = true },
+					statements = { bold = true },
+				},
+				overrides = function(colors)
+					return {
+						Normal = { fg = colors.palette.dragonWhite, bg = colors.palette.dragonBlack0 },
+					}
+				end,
+			})
+
+			vim.cmd.colorscheme("kanagawa-dragon")
+		end,
+	},
+
+	{
 		"oskarnurm/koda.nvim",
 		lazy = false, -- make sure we load this during startup if it is your main colorscheme
 		priority = 1000, -- make sure to load this before all the other start plugins
@@ -553,7 +584,7 @@ vim.api.nvim_create_autocmd("CursorHold", {
 				scope = "cursor",
 				border = "rounded",
 				focusable = false,
-                open_fold = true,
+				open_fold = true,
 				close_events = { "BufLeave", "CursorMoved", "InsertEnter", "FocusLost" },
 				source = "always",
 				severity_sort = true,
