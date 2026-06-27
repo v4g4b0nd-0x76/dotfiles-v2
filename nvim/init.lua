@@ -84,6 +84,7 @@ vim.keymap.set("n", "<C-Down>", "<C-w>j", { desc = "Navigate to Lower Window" })
 vim.keymap.set("n", "<C-S-z>", "<C-r>", { desc = "Redo Last Undo" })
 vim.keymap.set("n", "<C-q>", "<cmd>mksession! .nvim_session | qa!<CR>", { desc = "Save Session and Quit Instantly" })
 vim.keymap.set("n", "<leader>mp", "<cmd>RenderMarkdown preview<CR>", { desc = "Open Terminal-Native Markdown Preview" })
+vim.keymap.set("n", "<leader>mt", "<cmd>RenderMarkdown toggle<CR>", { desc = "Open Terminal-Native Markdown toggle" })
 
 vim.keymap.set("n", "<leader>df", function()
 	require("trouble").toggle({
@@ -140,9 +141,9 @@ local function lsp_on_attach(client, bufnr)
 				focusable = true,
 				border = "rounded",
 				close_events = {
-	 				 "CursorMoved",
-	 				-- "BufLeave",
-                },
+					"CursorMoved",
+					-- "BufLeave",
+				},
 				source = "always",
 			})
 		else
@@ -298,10 +299,7 @@ require("lazy").setup({
 		ft = { "markdown" },
 		config = function()
 			require("render-markdown").setup({
-				heading = {
-					sign = false,
-					icons = { "━ H1 ━ ", "─ H2 ─ ", "─ H3 ─ ", "─ H4 ─ " },
-				},
+				completions = { lsp = { enabled = true } },
 				code = { style = "full", position = "left", width = "block", left_pad = 2, right_pad = 4 },
 				pipe_table = { preset = "round" },
 			})
