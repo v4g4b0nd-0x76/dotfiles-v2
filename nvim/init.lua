@@ -86,14 +86,16 @@ vim.keymap.set("n", "<C-q>", "<cmd>mksession! .nvim_session | qa!<CR>", { desc =
 vim.keymap.set("n", "<leader>mp", "<cmd>RenderMarkdown preview<CR>", { desc = "Open Terminal-Native Markdown Preview" })
 
 vim.keymap.set("n", "<leader>df", function()
-	require("trouble").open({
+	require("trouble").toggle({
 		mode = "diagnostics",
 		filter = { buf = 0 },
 	})
 end)
 
 vim.keymap.set("n", "<leader>dw", function()
-	require("trouble").open("diagnostics")
+	require("trouble").toggle({
+		mode = "diagnostics",
+	})
 end)
 
 vim.keymap.set("t", "<C-Left>", [[<C-\><C-n><C-w>h]], { desc = "Navigate Left from Terminal" })
@@ -137,13 +139,37 @@ local function lsp_on_attach(client, bufnr)
 			vim.diagnostic.open_float(nil, {
 				focusable = true,
 				border = "rounded",
-				close_events = {},
+				close_events = {
+	 				 "CursorMoved",
+	 				-- "BufLeave",
+                },
 				source = "always",
 			})
 		else
 			vim.lsp.buf.hover()
 		end
 	end, opts)
+
+	-- vim.keymap.set("n", "K", function()
+	-- 	local diagnostics = vim.diagnostic.get(0, { lnum = vim.api.nvim_win_get_cursor(0)[1] - 1 })
+	--
+	-- 	if #diagnostics > 0 then
+	-- 		vim.diagnostic.open_float(nil, {
+	-- 			focusable = true,
+	-- 			border = "rounded",
+	-- 			source = "always",
+	-- 			close_events = {
+	-- 				"CursorMoved",
+	-- 				"CursorMovedI",
+	-- 				"InsertEnter",
+	-- 				"BufLeave",
+	-- 				"FocusLost",
+	-- 			},
+	-- 		})
+	-- 	else
+	-- 		vim.lsp.buf.hover()
+	-- 	end
+	-- end, opts)
 
 	vim.keymap.set("n", "<C-k>", vim.lsp.buf.signature_help, opts)
 	vim.keymap.set("i", "<C-k>", vim.lsp.buf.signature_help, opts)
@@ -184,46 +210,78 @@ require("lazy").setup({
 	--         vim.cmd("colorscheme ember")
 	--     end,
 	-- },
+	-- {
+	-- 	"rebelot/kanagawa.nvim",
+	-- 	priority = 1000,
+	-- 	config = function()
+	-- 		vim.opt.termguicolors = true
+	-- 		vim.opt.background = "dark"
+	--
+	-- 		require("kanagawa").setup({
+	-- 			theme = "dragon",
+	-- 			transparent = false,
+	-- 			dimInactive = false,
+	-- 			terminalColors = true,
+	-- 			compile = true,
+	-- 			styles = {
+	-- 				comments = { italic = true },
+	-- 				keywords = { italic = true, bold = true },
+	-- 				functions = { bold = true },
+	-- 				variables = { bold = true },
+	-- 				statements = { bold = true },
+	-- 			},
+	-- 			overrides = function(colors)
+	-- 				return {
+	-- 					Normal = { fg = colors.palette.dragonWhite, bg = colors.palette.dragonBlack0 },
+	-- 				}
+	-- 			end,
+	-- 		})
+	--
+	-- 		vim.cmd.colorscheme("kanagawa-dragon")
+	-- 	end,
+	-- },
+	--
+	-- {
+	-- 	"oskarnurm/koda.nvim",
+	-- 	lazy = false, -- make sure we load this during startup if it is your main colorscheme
+	-- 	priority = 1000, -- make sure to load this before all the other start plugins
+	-- 	config = function()
+	-- 		-- require("koda").setup({ transparent = true })
+	-- 		vim.cmd("colorscheme koda")
+	-- 	end,
+	-- },
+
 	{
-		"rebelot/kanagawa.nvim",
+		"sainnhe/gruvbox-material",
+		lazy = false,
 		priority = 1000,
 		config = function()
-			vim.opt.termguicolors = true
-			vim.opt.background = "dark"
+			vim.g.gruvbox_material_background = "hard"
+			vim.g.gruvbox_material_foreground = "material"
+			vim.g.gruvbox_material_enable_italic = 1
+			vim.g.gruvbox_material_disable_italic_comment = 0
+			vim.g.gruvbox_material_transparent_background = 2
+			vim.g.gruvbox_material_dim_inactive_windows = 1
+			vim.g.gruvbox_material_better_performance = 0
 
-			require("kanagawa").setup({
-				theme = "dragon",
-				transparent = false,
-				dimInactive = false,
-				terminalColors = true,
-				compile = true,
-				styles = {
-					comments = { italic = true },
-					keywords = { italic = true, bold = true },
-					functions = { bold = true },
-					variables = { bold = true },
-					statements = { bold = true },
-				},
-				overrides = function(colors)
-					return {
-						Normal = { fg = colors.palette.dragonWhite, bg = colors.palette.dragonBlack0 },
-					}
-				end,
-			})
+			vim.cmd.colorscheme("gruvbox-material")
 
-			vim.cmd.colorscheme("kanagawa-dragon")
+			local hl = vim.api.nvim_set_hl
+
+			hl(0, "Normal", { bg = "NONE" })
+			hl(0, "NormalFloat", { bg = "NONE" })
+			hl(0, "SignColumn", { bg = "NONE" })
+			hl(0, "EndOfBuffer", { bg = "NONE" })
+
+			hl(0, "@comment", { italic = false })
+			hl(0, "Comment", { italic = false })
+
+			hl(0, "@keyword", { bold = true })
+			hl(0, "@type", { bold = true })
+			hl(0, "@function", { bold = true })
 		end,
 	},
 
-	{
-		"oskarnurm/koda.nvim",
-		lazy = false, -- make sure we load this during startup if it is your main colorscheme
-		priority = 1000, -- make sure to load this before all the other start plugins
-		config = function()
-			-- require("koda").setup({ transparent = true })
-			vim.cmd("colorscheme koda")
-		end,
-	},
 	{
 		"romgrk/barbar.nvim",
 		dependencies = { "lewis6991/gitsigns.nvim", "nvim-tree/nvim-web-devicons" },
@@ -267,9 +325,12 @@ require("lazy").setup({
 		config = function()
 			local builtin = require("telescope.builtin")
 			vim.keymap.set("n", "<leader>ff", builtin.find_files, { desc = "Search Files by Name" })
+
 			vim.keymap.set("n", "<leader>fg", function()
-				require("grug-far").open()
-			end, { desc = "Persistent Project Search" })
+				require("grug-far").toggle_instance({
+					instanceName = "search",
+				})
+			end, { desc = "Project Search" })
 
 			vim.keymap.set(
 				"n",
@@ -281,7 +342,14 @@ require("lazy").setup({
 	},
 	{
 		"MagicDuck/grug-far.nvim",
-		config = true,
+		opts = {
+			windowCreationCommand = "vertical botright 50split",
+			keymaps = {
+				close = {
+					n = "q",
+				},
+			},
+		},
 	},
 	{
 		"folke/trouble.nvim",
