@@ -124,6 +124,13 @@ local function lsp_on_attach(client, bufnr)
 	local ts_builtin = require("telescope.builtin")
 
 	vim.keymap.set("n", "gd", ts_builtin.lsp_definitions, opts)
+	vim.keymap.set("n", "gv", function()
+		ts_builtin.lsp_definitions({ jump_type = "vsplit" })
+	end, { buffer = bufnr, desc = "LSP Definition (Vertical Split)" })
+
+	vim.keymap.set("n", "gh", function()
+		ts_builtin.lsp_definitions({ jump_type = "split" })
+	end, { buffer = bufnr, desc = "LSP Definition (Horizontal Split)" })
 	vim.keymap.set("n", "gD", vim.lsp.buf.declaration, opts)
 	vim.keymap.set("n", "gr", function()
 		ts_builtin.lsp_references({
