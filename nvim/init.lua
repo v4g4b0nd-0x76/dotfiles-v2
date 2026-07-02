@@ -315,7 +315,6 @@ require("lazy").setup({
 	{
 		"nvim-treesitter/nvim-treesitter-textobjects",
 	},
-
 	{
 		"smoka7/multicursors.nvim",
 		event = "VeryLazy",
@@ -323,6 +322,13 @@ require("lazy").setup({
 			"nvimtools/hydra.nvim",
 		},
 		opts = {},
+		config = function(_, opts)
+			require("multicursors").setup(opts)
+
+			vim.keymap.set({ "n", "v" }, "<C-d>", function()
+				vim.cmd("MCstart")
+			end, { silent = true })
+		end,
 	},
 	{
 		"nvim-telescope/telescope.nvim",
