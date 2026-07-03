@@ -340,6 +340,9 @@ require("lazy").setup({
 			vim.keymap.set("n", "<leader>fg", function()
 				require("grug-far").toggle_instance({
 					instanceName = "search",
+					prefills = {
+						flags = "--fixed-strings",
+					},
 				})
 			end, { desc = "Project Search" })
 
