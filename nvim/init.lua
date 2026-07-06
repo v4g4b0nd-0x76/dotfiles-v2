@@ -700,3 +700,41 @@ vim.api.nvim_create_autocmd("VimEnter", {
 		end
 	end,
 })
+local function focus_editor()
+    -- close known sidebars
+    pcall(vim.cmd, "NvimTreeClose")
+    pcall(vim.cmd, "TroubleClose")
+    pcall(vim.cmd, "DiffviewClose")
+    pcall(vim.cmd, "GrugFarClose")
+
+    -- close floating windows
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+        local cfg = vim.api.nvim_win_get_config(win)
+        if cfg.relative ~= "" then
+            pcall(vim.api.nvim_win_close, win, true)
+        end
+    end
+
+    -- switch to a normal file window
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+        local buf = vim.api.nvim_win_get_buf(win)
+        local bt = vim.bo[buf].buftype
+        local ft = vim.bo[buf].filetype
+
+        if bt == ""
+            and ft ~= "NvimTree"
+            and ft ~= "trouble"
+            and ft ~= "grug-far"
+            and not ft:match("^Diffview") then
+            vim.api.nvim_set_current_win(win)
+            break
+        end
+    end
+
+    -- remove every split
+    vim.cmd("only")
+end
+
+vim.keymap.set("n", "<leader>wf", focus_editor, {
+    desc = "Focus Editor",
+})
