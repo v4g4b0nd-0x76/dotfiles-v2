@@ -1,9 +1,28 @@
 -- ========================================================================== --
 -- [[                        STRUCTURED NVIM CONFIG                        ]] --
+-- ==========================================================================--
+-- Sections:
+--   1. Base options & performance
+--   2. Highlight groups (diagnostics, statusline, winbar, splits)
+--   3. Statusline (bottom, global) & Winbar (per-split identifier)
+--   4. Global keymaps (navigation, sessions, diagnostics, indenting, git)
+--   5. Markdown / notes quality-of-life
+--   6. Lazy.nvim bootstrap
+--   7. LSP on_attach
+--   8. Plugin specs
+--   9. Autocommands (LSP health/cleanup, terminal, sessions, focus helper)
 -- ========================================================================== --
 
--- 1. BASE SYSTEM SETTINGS (Performance & Behavioral adjustments)
+-- ========================================================================== --
+-- 1. BASE OPTIONS & PERFORMANCE
+-- ========================================================================== --
 vim.g.mapleader = " "
+
+-- Disable unused providers -> faster startup, no python/ruby/node health checks
+vim.g.loaded_python3_provider = 0
+vim.g.loaded_ruby_provider = 0
+vim.g.loaded_perl_provider = 0
+vim.g.loaded_node_provider = 0
 
 local opt = vim.opt
 opt.number = true
@@ -11,22 +30,29 @@ opt.relativenumber = true
 opt.termguicolors = true
 opt.clipboard = "unnamedplus"
 opt.signcolumn = "yes"
-opt.updatetime = 300
+opt.updatetime = 250 -- snappier diagnostics/gitsigns/CursorHold without being wasteful
+opt.timeoutlen = 400 -- which-key popup appears quickly
+opt.ttimeoutlen = 10
 opt.tabstop = 4
 opt.shiftwidth = 4
 opt.expandtab = true
 opt.equalalways = false
 opt.sessionoptions = "blank,buffers,curdir,folds,help,tabpages,winsize"
-vim.opt.splitright = true
-vim.opt.splitbelow = true
-vim.opt.ignorecase = true
-vim.opt.smartcase = true
-vim.opt.swapfile = false
-vim.opt.backup = false
-vim.opt.writebackup = false
-vim.opt.hidden = true
-vim.opt.autowrite = true
+opt.splitright = true
+opt.splitbelow = true
+opt.ignorecase = true
+opt.smartcase = true
+opt.swapfile = false
+opt.backup = false
+opt.writebackup = false
+opt.hidden = true
+opt.autowrite = true
+opt.laststatus = 3 -- ONE global statusline at the very bottom (point 1)
+opt.fillchars = { vert = "│", eob = " " } -- cleaner vertical split separators (point 6)
 
+-- ========================================================================== --
+-- 2. HIGHLIGHT GROUPS
+-- ========================================================================== --
 vim.api.nvim_set_hl(0, "DiagnosticLineNrError", { fg = "#f38ba8", bold = true })
 vim.api.nvim_set_hl(0, "DiagnosticLineNrWarn", { fg = "#fab387", bold = true })
 vim.api.nvim_set_hl(0, "DiagnosticLineNrInfo", { fg = "#89b4fa", bold = true })
@@ -36,7 +62,74 @@ vim.api.nvim_set_hl(0, "DiagnosticVirtualTextWarn", { fg = "#fab387", italic = t
 vim.api.nvim_set_hl(0, "DiagnosticVirtualTextInfo", { fg = "#89b4fa", italic = true })
 vim.api.nvim_set_hl(0, "DiagnosticVirtualTextHint", { fg = "#a6adc8", italic = true })
 
--- 2. GLOBAL INTUITIVE KEYMAPS
+-- Statusline (point 1)
+vim.api.nvim_set_hl(0, "StatusLineFile", { fg = "#1e1e2e", bg = "#a6adc8", bold = true })
+vim.api.nvim_set_hl(0, "StatusLineSep", { fg = "#6c7086" })
+vim.api.nvim_set_hl(0, "StatusLineError", { fg = "#f38ba8", bold = true })
+vim.api.nvim_set_hl(0, "StatusLineWarn", { fg = "#fab387", bold = true })
+
+-- Winbar (point 6) - Neovim uses "WinBar" for the focused split and
+-- "WinBarNC" for every other split automatically, so styling these two
+-- groups is enough to make each split visually distinct.
+vim.api.nvim_set_hl(0, "WinBar", { fg = "#1e1e2e", bg = "#a6adc8", bold = true })
+vim.api.nvim_set_hl(0, "WinBarNC", { fg = "#6c7086", bg = "NONE", italic = true })
+vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#a6adc8", bold = true })
+
+-- ========================================================================== --
+-- 3. STATUSLINE & WINBAR
+-- ========================================================================== --
+
+-- Bottom statusline: filename, total lines, error/warning counts. Nothing else. (point 1)
+function _G.SimpleStatusline()
+	local filename = vim.fn.expand("%:t")
+	if filename == "" then
+		filename = "[No Name]"
+	end
+	local total_lines = vim.fn.line("$")
+
+	local errors, warnings = 0, 0
+	local ok, counts = pcall(vim.diagnostic.count, 0)
+	if ok and counts then
+		errors = counts[vim.diagnostic.severity.ERROR] or 0
+		warnings = counts[vim.diagnostic.severity.WARN] or 0
+	end
+
+	local parts = {
+		"%#StatusLineFile# " .. filename .. " %#StatusLine#",
+		"%#StatusLineSep# │ %#StatusLine#Lines: " .. total_lines .. " ",
+	}
+	if errors > 0 then
+		table.insert(parts, "%#StatusLineSep#│ %#StatusLineError#E:" .. errors .. " %#StatusLine#")
+	end
+	if warnings > 0 then
+		table.insert(parts, "%#StatusLineSep#│ %#StatusLineWarn#W:" .. warnings .. " %#StatusLine#")
+	end
+	return table.concat(parts, "")
+end
+opt.statusline = "%{%v:lua.SimpleStatusline()%}"
+
+-- Per-split identifier winbar: makes it obvious which buffer/split you're in
+-- when several are open side by side, with a modified indicator. (point 6)
+function _G.SimpleWinbar()
+	local filename = vim.fn.expand("%:t")
+	if filename == "" then
+		filename = "[No Name]"
+	end
+	local modified = vim.bo.modified and " ●" or ""
+	return "  " .. filename .. modified .. "  "
+end
+opt.winbar = "%{%v:lua.SimpleWinbar()%}"
+
+-- Keep the statusline diagnostic counts fresh without extra lag
+vim.api.nvim_create_autocmd({ "DiagnosticChanged", "BufEnter", "TextChanged", "InsertLeave" }, {
+	callback = function()
+		vim.cmd("redrawstatus")
+	end,
+})
+
+-- ========================================================================== --
+-- 4. GLOBAL KEYMAPS
+-- ========================================================================== --
 vim.keymap.set("n", "|", function()
 	require("telescope.builtin").find_files({
 		attach_mappings = function(prompt_bufnr, map)
@@ -87,17 +180,12 @@ vim.keymap.set("n", "<leader>mp", "<cmd>RenderMarkdown preview<CR>", { desc = "O
 vim.keymap.set("n", "<leader>mt", "<cmd>RenderMarkdown toggle<CR>", { desc = "Open Terminal-Native Markdown toggle" })
 
 vim.keymap.set("n", "<leader>df", function()
-	require("trouble").toggle({
-		mode = "diagnostics",
-		filter = { buf = 0 },
-	})
-end)
+	require("trouble").toggle({ mode = "diagnostics", filter = { buf = 0 } })
+end, { desc = "Diagnostics (Current File)" })
 
 vim.keymap.set("n", "<leader>dw", function()
-	require("trouble").toggle({
-		mode = "diagnostics",
-	})
-end)
+	require("trouble").toggle({ mode = "diagnostics" })
+end, { desc = "Diagnostics (Workspace)" })
 
 vim.keymap.set("t", "<C-Left>", [[<C-\><C-n><C-w>h]], { desc = "Navigate Left from Terminal" })
 vim.keymap.set("t", "<C-Right>", [[<C-\><C-n><C-w>l]], { desc = "Navigate Right from Terminal" })
@@ -105,9 +193,62 @@ vim.keymap.set("t", "<C-Up>", [[<C-\><C-n><C-w>k]], { desc = "Navigate Upper fro
 vim.keymap.set("t", "<C-Down>", [[<C-\><C-n><C-w>j]], { desc = "Navigate Lower from Terminal" })
 vim.keymap.set("t", "<C-w>", [[<C-\><C-n><C-w>]], { desc = "Allow Ctrl+W window navigation inside terminal" })
 
--- 3. AUTOMATIC PLUGIN MANAGER BOOTSTRAP
+-- VSCode-style indenting: select with Shift-V, tap Tab/Shift-Tab to indent
+-- and stay in visual mode so you can keep pressing it. (point 5)
+vim.keymap.set("v", "<Tab>", ">gv", { desc = "Indent Selection" })
+vim.keymap.set("v", "<S-Tab>", "<gv", { desc = "Outdent Selection" })
+
+-- Quick window focus / layout reset
+local function focus_editor()
+	pcall(vim.cmd, "NvimTreeClose")
+	pcall(vim.cmd, "TroubleClose")
+	pcall(vim.cmd, "DiffviewClose")
+	pcall(vim.cmd, "GrugFarClose")
+
+	for _, win in ipairs(vim.api.nvim_list_wins()) do
+		local cfg = vim.api.nvim_win_get_config(win)
+		if cfg.relative ~= "" then
+			pcall(vim.api.nvim_win_close, win, true)
+		end
+	end
+
+	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		local buf = vim.api.nvim_win_get_buf(win)
+		local bt = vim.bo[buf].buftype
+		local ft = vim.bo[buf].filetype
+
+		if bt == "" and ft ~= "NvimTree" and ft ~= "trouble" and ft ~= "grug-far" and not ft:match("^Diffview") then
+			vim.api.nvim_set_current_win(win)
+			break
+		end
+	end
+
+	vim.cmd("only")
+end
+vim.keymap.set("n", "<leader>wf", focus_editor, { desc = "Focus Editor" })
+
+-- ========================================================================== --
+-- 5. MARKDOWN / NOTES QUALITY-OF-LIFE (point 7)
+-- ========================================================================== --
+vim.api.nvim_create_autocmd("FileType", {
+	pattern = "markdown",
+	callback = function()
+		vim.opt_local.conceallevel = 2 -- hides markup like Obsidian's live-preview
+		vim.opt_local.wrap = true
+		vim.opt_local.linebreak = true
+		vim.opt_local.spell = true
+		vim.opt_local.spelllang = "en_us"
+		vim.opt_local.foldmethod = "expr"
+		vim.opt_local.foldexpr = "v:lua.vim.treesitter.foldexpr()"
+		vim.opt_local.foldlevel = 99 -- headings foldable, but start fully open
+	end,
+})
+
+-- ========================================================================== --
+-- 6. LAZY.NVIM BOOTSTRAP
+-- ========================================================================== --
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
-if not vim.uv.fs_stat(lazypath) then -- Updated vim.loop to modern vim.uv
+if not vim.uv.fs_stat(lazypath) then
 	vim.fn.system({
 		"git",
 		"clone",
@@ -119,6 +260,9 @@ if not vim.uv.fs_stat(lazypath) then -- Updated vim.loop to modern vim.uv
 end
 vim.opt.rtp:prepend(lazypath)
 
+-- ========================================================================== --
+-- 7. LSP ON_ATTACH
+-- ========================================================================== --
 local function lsp_on_attach(client, bufnr)
 	local opts = { buffer = bufnr }
 	local ts_builtin = require("telescope.builtin")
@@ -133,51 +277,24 @@ local function lsp_on_attach(client, bufnr)
 	end, { buffer = bufnr, desc = "LSP Definition (Horizontal Split)" })
 	vim.keymap.set("n", "gD", vim.lsp.buf.declaration, opts)
 	vim.keymap.set("n", "gr", function()
-		ts_builtin.lsp_references({
-			include_declaration = false,
-		})
+		ts_builtin.lsp_references({ include_declaration = false })
 	end, opts)
 	vim.keymap.set("n", "gi", ts_builtin.lsp_implementations, opts)
 	vim.keymap.set("n", "gt", ts_builtin.lsp_type_definitions, opts)
 
 	vim.keymap.set("n", "K", function()
 		local diagnostics = vim.diagnostic.get(0, { lnum = vim.api.nvim_win_get_cursor(0)[1] - 1 })
-
 		if #diagnostics > 0 then
 			vim.diagnostic.open_float(nil, {
 				focusable = true,
 				border = "rounded",
-				close_events = {
-					"CursorMoved",
-					-- "BufLeave",
-				},
+				close_events = { "CursorMoved" },
 				source = "always",
 			})
 		else
 			vim.lsp.buf.hover()
 		end
 	end, opts)
-
-	-- vim.keymap.set("n", "K", function()
-	-- 	local diagnostics = vim.diagnostic.get(0, { lnum = vim.api.nvim_win_get_cursor(0)[1] - 1 })
-	--
-	-- 	if #diagnostics > 0 then
-	-- 		vim.diagnostic.open_float(nil, {
-	-- 			focusable = true,
-	-- 			border = "rounded",
-	-- 			source = "always",
-	-- 			close_events = {
-	-- 				"CursorMoved",
-	-- 				"CursorMovedI",
-	-- 				"InsertEnter",
-	-- 				"BufLeave",
-	-- 				"FocusLost",
-	-- 			},
-	-- 		})
-	-- 	else
-	-- 		vim.lsp.buf.hover()
-	-- 	end
-	-- end, opts)
 
 	vim.keymap.set("n", "<C-k>", vim.lsp.buf.signature_help, opts)
 	vim.keymap.set("i", "<C-k>", vim.lsp.buf.signature_help, opts)
@@ -192,72 +309,26 @@ local function lsp_on_attach(client, bufnr)
 		vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled({ bufnr = bufnr }), { bufnr = bufnr })
 	end, { buffer = bufnr, desc = "Toggle Inlay Hints" })
 
+	-- Restart the LSP client(s) attached to this buffer and wipe stale
+	-- diagnostics. Long sessions (hours) can leave rust-analyzer / gopls in a
+	-- stuck state that only a full nvim restart used to fix - this is the
+	-- same fix, without leaving nvim. (point 4)
+	vim.keymap.set("n", "<leader>lR", function()
+		vim.diagnostic.reset(nil, bufnr)
+		vim.cmd("LspRestart")
+		vim.notify("LSP restarted for this buffer", vim.log.levels.INFO)
+	end, { buffer = bufnr, desc = "Restart LSP (fix stuck diagnostics/errors)" })
+
 	if client:supports_method("textDocument/inlayHint") then
 		vim.lsp.inlay_hint.enable(false, { bufnr = bufnr })
 	end
 end
 
--- 4. PLUGIN DEFINITIONS & CONFIGURATIONS
+-- ========================================================================== --
+-- 8. PLUGIN SPECS
+-- ========================================================================== --
 require("lazy").setup({
-	{ "j-hui/fidget.nvim", opts = {} },
-	-- {
-	--     "ember-theme/nvim",
-	--     name = "ember",
-	--     priority = 1000,
-	--     config = function()
-	--         require("ember").setup({
-	--             variant = "ember",
-	--             styles = {
-	--                 comments = { italic = true },
-	--                 keywords = { bold = true },
-	--                 types = { bold = true },
-	--             },
-	--             transparent = false,
-	--             dark_variant = "ember",
-	--         })
-	--         vim.cmd("colorscheme ember")
-	--     end,
-	-- },
-	-- {
-	-- 	"rebelot/kanagawa.nvim",
-	-- 	priority = 1000,
-	-- 	config = function()
-	-- 		vim.opt.termguicolors = true
-	-- 		vim.opt.background = "dark"
-	--
-	-- 		require("kanagawa").setup({
-	-- 			theme = "dragon",
-	-- 			transparent = false,
-	-- 			dimInactive = false,
-	-- 			terminalColors = true,
-	-- 			compile = true,
-	-- 			styles = {
-	-- 				comments = { italic = true },
-	-- 				keywords = { italic = true, bold = true },
-	-- 				functions = { bold = true },
-	-- 				variables = { bold = true },
-	-- 				statements = { bold = true },
-	-- 			},
-	-- 			overrides = function(colors)
-	-- 				return {
-	-- 					Normal = { fg = colors.palette.dragonWhite, bg = colors.palette.dragonBlack0 },
-	-- 				}
-	-- 			end,
-	-- 		})
-	--
-	-- 		vim.cmd.colorscheme("kanagawa-dragon")
-	-- 	end,
-	-- },
-	--
-	-- {
-	-- 	"oskarnurm/koda.nvim",
-	-- 	lazy = false, -- make sure we load this during startup if it is your main colorscheme
-	-- 	priority = 1000, -- make sure to load this before all the other start plugins
-	-- 	config = function()
-	-- 		-- require("koda").setup({ transparent = true })
-	-- 		vim.cmd("colorscheme koda")
-	-- 	end,
-	-- },
+	{ "j-hui/fidget.nvim", event = "VeryLazy", opts = {} },
 
 	{
 		"sainnhe/gruvbox-material",
@@ -270,20 +341,17 @@ require("lazy").setup({
 			vim.g.gruvbox_material_disable_italic_comment = 0
 			vim.g.gruvbox_material_transparent_background = 2
 			vim.g.gruvbox_material_dim_inactive_windows = 1
-			vim.g.gruvbox_material_better_performance = 0
+			vim.g.gruvbox_material_better_performance = 1 -- perf: skip a few cosmetic passes (point 10)
 
 			vim.cmd.colorscheme("gruvbox-material")
 
 			local hl = vim.api.nvim_set_hl
-
 			hl(0, "Normal", { bg = "NONE" })
 			hl(0, "NormalFloat", { bg = "NONE" })
 			hl(0, "SignColumn", { bg = "NONE" })
 			hl(0, "EndOfBuffer", { bg = "NONE" })
-
 			hl(0, "@comment", { italic = false })
 			hl(0, "Comment", { italic = false })
-
 			hl(0, "@keyword", { bold = true })
 			hl(0, "@type", { bold = true })
 			hl(0, "@function", { bold = true })
@@ -292,6 +360,7 @@ require("lazy").setup({
 
 	{
 		"romgrk/barbar.nvim",
+		event = "VeryLazy", -- perf: don't block startup for the bufferline (point 10)
 		dependencies = { "lewis6991/gitsigns.nvim", "nvim-tree/nvim-web-devicons" },
 		init = function()
 			vim.g.barbar_auto_setup = false
@@ -299,7 +368,9 @@ require("lazy").setup({
 		opts = {},
 		version = "^1.0.0",
 	},
+
 	{ "windwp/nvim-autopairs", event = "InsertEnter", config = true },
+
 	{
 		"MeanderingProgrammer/render-markdown.nvim",
 		dependencies = { "nvim-treesitter/nvim-treesitter" },
@@ -312,40 +383,77 @@ require("lazy").setup({
 			})
 		end,
 	},
+
+	-- Obsidian-style notes: wiki-links, backlinks, tags, daily notes,
+	-- checkboxes - layered on top of render-markdown.nvim. (point 7)
+	-- NOTE: update workspaces.path below to point at your real notes folder.
 	{
-		"nvim-treesitter/nvim-treesitter-textobjects",
+		"epwalsh/obsidian.nvim",
+		version = "*",
+		ft = "markdown",
+		dependencies = { "nvim-lua/plenary.nvim" },
+		opts = {
+			workspaces = {
+				{ name = "notes", path = "~/notes" }, -- << set this to your notes directory
+			},
+			completion = {
+				nvim_cmp = false,
+				blink = true,
+				min_chars = 2,
+			},
+			ui = { enable = false }, -- render-markdown.nvim already renders the UI
+			daily_notes = {
+				folder = "daily",
+				date_format = "%Y-%m-%d",
+			},
+			checkbox = {
+				order = { " ", "x" },
+			},
+		},
+		config = function(_, opts)
+			require("obsidian").setup(opts)
+			vim.keymap.set("n", "<leader>nn", "<cmd>ObsidianNew<CR>", { desc = "New Note" })
+			vim.keymap.set("n", "<leader>nd", "<cmd>ObsidianToday<CR>", { desc = "Today's Daily Note" })
+			vim.keymap.set("n", "<leader>nf", "<cmd>ObsidianQuickSwitch<CR>", { desc = "Quick Switch Note" })
+			vim.keymap.set("n", "<leader>ns", "<cmd>ObsidianSearch<CR>", { desc = "Search Notes" })
+			vim.keymap.set("n", "<leader>nb", "<cmd>ObsidianBacklinks<CR>", { desc = "Show Backlinks" })
+			vim.keymap.set("n", "<leader>nt", "<cmd>ObsidianTags<CR>", { desc = "Browse Tags" })
+			vim.keymap.set("n", "<leader>nc", "<cmd>ObsidianToggleCheckbox<CR>", { desc = "Toggle Checkbox" })
+		end,
 	},
+
+	{ "nvim-treesitter/nvim-treesitter-textobjects" },
+
 	{
 		"smoka7/multicursors.nvim",
 		event = "VeryLazy",
-		dependencies = {
-			"nvimtools/hydra.nvim",
-		},
+		dependencies = { "nvimtools/hydra.nvim" },
 		opts = {},
 		config = function(_, opts)
 			require("multicursors").setup(opts)
-
 			vim.keymap.set({ "n", "v" }, "<C-d>", function()
 				vim.cmd("MCstart")
 			end, { silent = true })
 		end,
 	},
+
 	{
 		"nvim-telescope/telescope.nvim",
 		dependencies = { "nvim-lua/plenary.nvim" },
+		keys = {
+			{ "<leader>ff", desc = "Search Files by Name" },
+			{ "<leader>fg", desc = "Project Search" },
+			{ "<leader>fb", desc = "Search Text in Current File" },
+		},
 		config = function()
 			local builtin = require("telescope.builtin")
 			vim.keymap.set("n", "<leader>ff", builtin.find_files, { desc = "Search Files by Name" })
-
 			vim.keymap.set("n", "<leader>fg", function()
 				require("grug-far").toggle_instance({
 					instanceName = "search",
-					prefills = {
-						flags = "--fixed-strings",
-					},
+					prefills = { flags = "--fixed-strings" },
 				})
 			end, { desc = "Project Search" })
-
 			vim.keymap.set(
 				"n",
 				"<leader>fb",
@@ -354,36 +462,30 @@ require("lazy").setup({
 			)
 		end,
 	},
+
 	{
 		"MagicDuck/grug-far.nvim",
+		cmd = "GrugFar",
 		opts = {
 			windowCreationCommand = "vertical botright 50split",
-			keymaps = {
-				close = {
-					n = "q",
-				},
-			},
+			keymaps = { close = { n = "q" } },
 		},
 	},
+
 	{
 		"folke/trouble.nvim",
+		cmd = "Trouble",
 		opts = {
 			auto_close = false,
 			focus = true,
-			win = {
-				position = "right",
-				size = 60,
-			},
-			preview = {
-				type = "split",
-				relative = "win",
-				position = "bottom",
-				size = 0.40,
-			},
+			win = { position = "right", size = 60 },
+			preview = { type = "split", relative = "win", position = "bottom", size = 0.40 },
 		},
 	},
+
 	{
 		"lewis6991/gitsigns.nvim",
+		event = { "BufReadPre", "BufNewFile" },
 		config = function()
 			require("gitsigns").setup({
 				signs = {
@@ -401,16 +503,34 @@ require("lazy").setup({
 			})
 		end,
 	},
+
 	{
+		-- Enriched git workflow (points 2 & 3):
+		--   <leader>gf  -> current file's history across commits, two-pane
+		--                  (LEFT = your working copy, editable; RIGHT = the
+		--                  commit selected in the log panel, with live preview
+		--                  as you move up/down the log)
+		--   <leader>gl  -> select lines with Shift-V then press this to see
+		--                  ONLY those lines' history across commits
+		--                  (diffview drives `git log -L` under the hood when
+		--                  it is invoked from a visual selection)
 		"sindrets/diffview.nvim",
+		cmd = { "DiffviewOpen", "DiffviewFileHistory", "DiffviewClose" },
 		dependencies = { "nvim-lua/plenary.nvim", "nvim-telescope/telescope.nvim" },
+		keys = {
+			{ "<leader>gf", desc = "File History (Two-Pane Diff)" },
+			{ "<leader>gl", mode = "v", desc = "Line History Across Commits" },
+			{ "<leader>gcc", desc = "Browse Commits & View Changed Files" },
+			{ "<leader>gdc", desc = "Close Diff Workspace" },
+			{ "<leader>gco", desc = "Git checkout changes" },
+		},
 		config = function()
 			require("diffview").setup({
 				enhanced_diff_hl = true,
 				use_icons = false,
 				view = {
 					default = { layout = "diff2_horizontal" },
-					file_history = { layout = "diff2_horizontal" },
+					file_history = { layout = "diff2_horizontal" }, -- left=current/editable, right=selected commit
 					merge_tool = { layout = "diff3_horizontal", disable_diagnostics = true },
 				},
 				file_history_panel = { win_config = { position = "bottom", height = 16 } },
@@ -465,6 +585,17 @@ require("lazy").setup({
 				end
 			end
 
+			-- Point 2: current file across commits, two-pane, left editable / right preview
+			vim.keymap.set("n", "<leader>gf", function()
+				pcall(vim.cmd, "NvimTreeClose")
+				vim.cmd("DiffviewFileHistory % --base=LOCAL")
+			end, { desc = "File History (Two-Pane Diff)" })
+
+			-- Point 3: visual-select lines, then see only those lines' history
+			vim.keymap.set("v", "<leader>gl", "<Esc><Cmd>'<,'>DiffviewFileHistory<CR>", {
+				desc = "Line History Across Commits",
+			})
+
 			vim.keymap.set(
 				"n",
 				"<leader>gcc",
@@ -473,14 +604,13 @@ require("lazy").setup({
 			)
 			vim.keymap.set("n", "<leader>gdc", "<cmd>DiffviewClose<CR>", { desc = "Close Diff Workspace" })
 			vim.keymap.set("n", "<leader>gco", git_checkout, { desc = "Git checkout changes" })
-			vim.keymap.set("n", "<leader>gh", function()
-				vim.cmd("NvimTreeClose")
-				vim.cmd("DiffviewFileHistory --base=LOCAL %")
-			end, { desc = "File History Log Split" })
 		end,
 	},
+
 	{
 		"nvim-tree/nvim-tree.lua",
+		cmd = { "NvimTreeToggle", "NvimTreeClose" },
+		keys = { { "<leader>e", desc = "Toggle File Tree" } },
 		config = function()
 			require("nvim-tree").setup({
 				renderer = { icons = { show = { file = false, folder = false, folder_arrow = false, git = false } } },
@@ -503,37 +633,47 @@ require("lazy").setup({
 			vim.keymap.set("n", "<leader>e", ":NvimTreeToggle<CR>", { silent = true, desc = "Toggle File Tree" })
 		end,
 	},
+
+	-- Lean which-key guide (point 8): only top-level groups + the handful of
+	-- mappings that aren't self-explanatory from their buffer-local `desc`.
 	{
 		"folke/which-key.nvim",
 		event = "VeryLazy",
 		config = function()
 			local wk = require("which-key")
-			wk.setup()
+			wk.setup({
+				preset = "modern",
+				win = { border = "rounded" },
+				icons = { mappings = false }, -- plain text, no nerd-font dependency, lean look
+			})
 			wk.add({
-				{ "<leader>w", group = "Window Management" },
-				{ "<leader>wq", "<C-w>c", desc = "Close Current Split" },
-				{ "<leader>wo", "<C-w>o", desc = "Only Keep Current Window" },
-				{ "<leader>w=", "<C-w>=", desc = "Equalize Split Sizes" },
+				{ "<leader>w", group = "Window" },
+				{ "<leader>m", group = "Markdown" },
+				{ "<leader>d", group = "Diagnostics" },
+				{ "<leader>f", group = "Find" },
+				{ "<leader>g", group = "Git" },
+				{ "<leader>l", group = "LSP" },
+				{ "<leader>n", group = "Notes" },
+				{ "<leader>wq", "<C-w>c", desc = "Close Split" },
+				{ "<leader>wo", "<C-w>o", desc = "Only This Window" },
+				{ "<leader>w=", "<C-w>=", desc = "Equalize Splits" },
 				{ "<leader>wx", "<cmd>vsplit<CR>", desc = "Vertical Split" },
 				{ "<leader>ws", "<cmd>split<CR>", desc = "Horizontal Split" },
-				{ "<leader>wn", "<cmd>BufferNext<CR>", noremap = true, silent = true, desc = "Next Tab" },
-				{ "<leader>wp", "<cmd>BufferPrevious<CR>", noremap = true, silent = true, desc = "Previous Tab" },
-				{ "<leader>ww", "<cmd>BufferPick<CR>", noremap = true, silent = true, desc = "Select Tab" },
-				{ "<leader>wl", "<cmd>BufferPin<CR>", noremap = true, silent = true, desc = "Pin Tab" },
-				{ "<leader>wc", "<cmd>BufferClose<CR>", noremap = true, silent = true, desc = "Close Tab" },
-				{ "<leader>m", group = "Markdown" },
-				{ "<leader>d", group = "Structural Diagnostics" },
-				{ "<leader>f", group = "Fuzzy Finder" },
-				{ "<leader>g", group = "GIT" },
-				{ "<leader>l", group = "lsp" },
-				{ "<leader>gc", desc = "Browse Commits & View Changed Files" },
-				{ "<leader>gd", group = "Diff Evaluation Engine" },
+				{ "<leader>wn", "<cmd>BufferNext<CR>", desc = "Next Buffer" },
+				{ "<leader>wp", "<cmd>BufferPrevious<CR>", desc = "Previous Buffer" },
+				{ "<leader>ww", "<cmd>BufferPick<CR>", desc = "Pick Buffer" },
+				{ "<leader>wl", "<cmd>BufferPin<CR>", desc = "Pin Buffer" },
+				{ "<leader>wc", "<cmd>BufferClose<CR>", desc = "Close Buffer" },
+				{ "<leader>gh", desc = "File History Log (Split)" },
 			})
 		end,
 	},
+
 	{ "neovim/nvim-lspconfig" },
+
 	{
 		"stevearc/conform.nvim",
+		event = { "BufWritePre" },
 		opts = {
 			formatters_by_ft = {
 				typescript = { "prettierd" },
@@ -542,22 +682,25 @@ require("lazy").setup({
 				javascriptreact = { "prettierd" },
 				rust = { "rustfmt", lsp_format = "fallback" },
 				lua = { "stylua" },
-
-				c = { "clang-format" }, -- Added C since you write system languages
+				c = { "clang-format" },
 				sh = { "shfmt" },
 				markdown = { "prettierd" },
 			},
 		},
 	},
+
 	{
 		"williamboman/mason.nvim",
 		build = ":MasonUpdate",
+		event = "VeryLazy",
 		config = function()
 			require("mason").setup()
 		end,
 	},
+
 	{
 		"williamboman/mason-lspconfig.nvim",
+		event = { "BufReadPre", "BufNewFile" },
 		dependencies = { "neovim/nvim-lspconfig" },
 		config = function()
 			local capabilities = require("blink.cmp").get_lsp_capabilities()
@@ -582,9 +725,21 @@ require("lazy").setup({
 						},
 					},
 				},
+				-- Point 9: you develop on macOS but target Linux, and libc /
+				-- other unix-only crates don't resolve correctly if
+				-- rust-analyzer assumes the host (mac) target. Pinning the
+				-- cargo target to a Linux triple makes it analyze the
+				-- project as if it were being built on Linux.
 				rust_analyzer = {
-					cargo = {
-						target = "x86_64-unknown-linux-gnu",
+					settings = {
+						["rust-analyzer"] = {
+							cargo = {
+								target = "x86_64-unknown-linux-gnu", -- << change if you target a different linux arch
+								allFeatures = true,
+							},
+							check = { command = "clippy" },
+							checkOnSave = true,
+						},
 					},
 				},
 				gopls = {},
@@ -600,9 +755,11 @@ require("lazy").setup({
 			end
 		end,
 	},
+
 	{
 		"saghen/blink.cmp",
 		version = "*",
+		event = "InsertEnter", -- perf: only load once you actually start typing (point 10)
 		dependencies = { "rafamadriz/friendly-snippets", "onsails/lspkind.nvim" },
 		opts = {
 			keymap = {
@@ -628,9 +785,7 @@ require("lazy").setup({
 						},
 					},
 				},
-				list = {
-					selection = { preselect = true, auto_insert = false },
-				},
+				list = { selection = { preselect = true, auto_insert = false } },
 			},
 			signature = { enabled = true },
 			sources = { default = { "lsp", "path", "snippets", "buffer" } },
@@ -641,7 +796,7 @@ require("lazy").setup({
 })
 
 -- ========================================================================== --
--- [[             VS CODE STYLE DIAGNOSTICS & HOVER BOXES                 ]] --
+-- 9. AUTOCOMMANDS
 -- ========================================================================== --
 
 vim.api.nvim_set_hl(0, "LspInlayHint", { fg = "#545464", bg = "NONE", italic = true })
@@ -651,8 +806,6 @@ vim.api.nvim_create_autocmd("CursorHold", {
 		if vim.bo.buftype ~= "" or vim.bo.filetype == "help" then
 			return
 		end
-
-		-- Prevent flickering/lag by ensuring we don't open if a float is already active
 		for _, winid in pairs(vim.api.nvim_tabpage_list_wins(0)) do
 			if vim.api.nvim_win_get_config(winid).zindex then
 				return
@@ -685,6 +838,31 @@ vim.api.nvim_create_autocmd("LspAttach", {
 	end,
 })
 
+-- Point 4: this is the main fix for "weird errors that build up over hours".
+-- The most common cause is orphaned LSP clients / stale diagnostics left
+-- behind on buffers that were closed and reopened. Clearing diagnostics on
+-- detach, and stopping any client with no attached buffers left, reproduces
+-- what a full nvim restart used to do for you automatically.
+vim.api.nvim_create_autocmd("LspDetach", {
+	group = vim.api.nvim_create_augroup("UserLspDetach", { clear = true }),
+	callback = function(args)
+		vim.diagnostic.reset(nil, args.buf)
+	end,
+})
+
+vim.api.nvim_create_autocmd("BufDelete", {
+	group = vim.api.nvim_create_augroup("UserLspCleanup", { clear = true }),
+	callback = function()
+		vim.defer_fn(function()
+			for _, client in ipairs(vim.lsp.get_clients()) do
+				if vim.tbl_isempty(client.attached_buffers or {}) then
+					client:stop()
+				end
+			end
+		end, 200)
+	end,
+})
+
 vim.api.nvim_create_autocmd({ "TermOpen", "BufEnter" }, {
 	pattern = "term://*",
 	callback = function()
@@ -699,42 +877,4 @@ vim.api.nvim_create_autocmd("VimEnter", {
 			vim.cmd("source .nvim_session")
 		end
 	end,
-})
-local function focus_editor()
-    -- close known sidebars
-    pcall(vim.cmd, "NvimTreeClose")
-    pcall(vim.cmd, "TroubleClose")
-    pcall(vim.cmd, "DiffviewClose")
-    pcall(vim.cmd, "GrugFarClose")
-
-    -- close floating windows
-    for _, win in ipairs(vim.api.nvim_list_wins()) do
-        local cfg = vim.api.nvim_win_get_config(win)
-        if cfg.relative ~= "" then
-            pcall(vim.api.nvim_win_close, win, true)
-        end
-    end
-
-    -- switch to a normal file window
-    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-        local buf = vim.api.nvim_win_get_buf(win)
-        local bt = vim.bo[buf].buftype
-        local ft = vim.bo[buf].filetype
-
-        if bt == ""
-            and ft ~= "NvimTree"
-            and ft ~= "trouble"
-            and ft ~= "grug-far"
-            and not ft:match("^Diffview") then
-            vim.api.nvim_set_current_win(win)
-            break
-        end
-    end
-
-    -- remove every split
-    vim.cmd("only")
-end
-
-vim.keymap.set("n", "<leader>wf", focus_editor, {
-    desc = "Focus Editor",
 })
