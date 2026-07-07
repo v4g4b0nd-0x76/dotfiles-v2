@@ -201,9 +201,24 @@ vim.keymap.set("v", "<S-Tab>", "<gv", { desc = "Outdent Selection" })
 -- Quick window focus / layout reset
 local function focus_editor()
 	pcall(vim.cmd, "NvimTreeClose")
-	pcall(vim.cmd, "TroubleClose")
+
+	-- Close Trouble via its own API (not the removed `:TroubleClose` command).
+	-- Calling the real close() lets Trouble tear down its internal window
+	-- state cleanly; if it's instead ripped out by `:only` below, Trouble is
+	-- left thinking a dead window is still its panel, which is what caused
+	-- the random "Invalid 'win': Expected Lua number" crash and dead
+	-- diagnostics/LSP afterwards.
+	local trouble_ok, trouble = pcall(require, "trouble")
+	if trouble_ok then
+		pcall(trouble.close)
+	end
+
 	pcall(vim.cmd, "DiffviewClose")
-	pcall(vim.cmd, "GrugFarClose")
+
+	local grugfar_ok, grugfar = pcall(require, "grug-far")
+	if grugfar_ok then
+		pcall(grugfar.close_instance, "search")
+	end
 
 	for _, win in ipairs(vim.api.nvim_list_wins()) do
 		local cfg = vim.api.nvim_win_get_config(win)
@@ -309,10 +324,6 @@ local function lsp_on_attach(client, bufnr)
 		vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled({ bufnr = bufnr }), { bufnr = bufnr })
 	end, { buffer = bufnr, desc = "Toggle Inlay Hints" })
 
-	-- Restart the LSP client(s) attached to this buffer and wipe stale
-	-- diagnostics. Long sessions (hours) can leave rust-analyzer / gopls in a
-	-- stuck state that only a full nvim restart used to fix - this is the
-	-- same fix, without leaving nvim. (point 4)
 	vim.keymap.set("n", "<leader>lR", function()
 		vim.diagnostic.reset(nil, bufnr)
 		vim.cmd("LspRestart")
@@ -479,7 +490,16 @@ require("lazy").setup({
 			auto_close = false,
 			focus = true,
 			win = { position = "right", size = 60 },
-			preview = { type = "split", relative = "win", position = "bottom", size = 0.40 },
+			-- NOTE: previously `preview = { type = "split", relative = "win",
+			-- position = "bottom", size = 0.40 }`.
+			-- `relative = "win"` requires Trouble to also pass a concrete
+			-- numeric window handle to Neovim's window API, which it never
+			-- does for this field. That mismatch is exactly what threw
+			-- "Invalid 'win': Expected Lua number" (window.lua:178), and once
+			-- it errored mid-render it left the Trouble panel + diagnostics
+			-- in a broken half-open state until a full restart. The default
+			-- preview (type = "main", drawn in the current editor window) is
+			-- safe and doesn't need this option at all.
 		},
 	},
 
@@ -734,7 +754,7 @@ require("lazy").setup({
 					settings = {
 						["rust-analyzer"] = {
 							cargo = {
-								target = "x86_64-unknown-linux-gnu", -- << change if you target a different linux arch
+								-- target = "x86_64-unknown-linux-gnu", -- << change if you target a different linux arch
 								allFeatures = true,
 							},
 							check = { command = "clippy" },
