@@ -3,9 +3,9 @@
 -- ==========================================================================--
 -- Sections:
 --   1. Base options & performance
---   2. Highlight groups (diagnostics, statusline, winbar, splits)
---   3. Statusline (bottom, global) & Winbar (per-split identifier)
---   4. Global keymaps (navigation, sessions, diagnostics, indenting, git)
+--   2. Highlight groups (diagnostics, winbar, splits, multicursor)
+--   3. Winbar (per-split identifier)
+--   4. Global keymaps (navigation, sessions, diagnostics, indenting, git, registers)
 --   5. Markdown / notes quality-of-life
 --   6. Lazy.nvim bootstrap
 --   7. LSP on_attach
@@ -47,8 +47,8 @@ opt.backup = false
 opt.writebackup = false
 opt.hidden = true
 opt.autowrite = true
-opt.laststatus = 3 -- ONE global statusline at the very bottom (point 1)
-opt.fillchars = { vert = "│", eob = " " } -- cleaner vertical split separators (point 6)
+opt.laststatus = 3 -- ONE global statusline at the very bottom (lualine uses this too)
+opt.fillchars = { vert = "│", eob = " " } -- cleaner vertical split separators
 
 -- ========================================================================== --
 -- 2. HIGHLIGHT GROUPS
@@ -62,54 +62,28 @@ vim.api.nvim_set_hl(0, "DiagnosticVirtualTextWarn", { fg = "#fab387", italic = t
 vim.api.nvim_set_hl(0, "DiagnosticVirtualTextInfo", { fg = "#89b4fa", italic = true })
 vim.api.nvim_set_hl(0, "DiagnosticVirtualTextHint", { fg = "#a6adc8", italic = true })
 
--- Statusline (point 1)
-vim.api.nvim_set_hl(0, "StatusLineFile", { fg = "#1e1e2e", bg = "#a6adc8", bold = true })
-vim.api.nvim_set_hl(0, "StatusLineSep", { fg = "#6c7086" })
-vim.api.nvim_set_hl(0, "StatusLineError", { fg = "#f38ba8", bold = true })
-vim.api.nvim_set_hl(0, "StatusLineWarn", { fg = "#fab387", bold = true })
-
--- Winbar (point 6) - Neovim uses "WinBar" for the focused split and
--- "WinBarNC" for every other split automatically, so styling these two
--- groups is enough to make each split visually distinct.
+-- Winbar - Neovim uses "WinBar" for the focused split and "WinBarNC" for
+-- every other split automatically, so styling these two groups is enough
+-- to make each split visually distinct.
 vim.api.nvim_set_hl(0, "WinBar", { fg = "#1e1e2e", bg = "#a6adc8", bold = true })
 vim.api.nvim_set_hl(0, "WinBarNC", { fg = "#6c7086", bg = "NONE", italic = true })
 vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#a6adc8", bold = true })
 
+-- Multicursor selections: the plugin's default is a dark reverse-video
+-- block, which is what you were calling "not cool". These two groups are
+-- the only ones multicursors.nvim exposes, so overriding them is enough
+-- to get a light, readable highlight for every selection.
+vim.api.nvim_set_hl(0, "MultiCursor", { bg = "#f9e2af", fg = "#1e1e2e" })
+vim.api.nvim_set_hl(0, "MultiCursorMain", { bg = "#a6e3a1", fg = "#1e1e2e", bold = true })
+
 -- ========================================================================== --
--- 3. STATUSLINE & WINBAR
+-- 3. WINBAR
 -- ========================================================================== --
-
--- Bottom statusline: filename, total lines, error/warning counts. Nothing else. (point 1)
-function _G.SimpleStatusline()
-	local filename = vim.fn.expand("%:t")
-	if filename == "" then
-		filename = "[No Name]"
-	end
-	local total_lines = vim.fn.line("$")
-
-	local errors, warnings = 0, 0
-	local ok, counts = pcall(vim.diagnostic.count, 0)
-	if ok and counts then
-		errors = counts[vim.diagnostic.severity.ERROR] or 0
-		warnings = counts[vim.diagnostic.severity.WARN] or 0
-	end
-
-	local parts = {
-		"%#StatusLineFile# " .. filename .. " %#StatusLine#",
-		"%#StatusLineSep# │ %#StatusLine#Lines: " .. total_lines .. " ",
-	}
-	if errors > 0 then
-		table.insert(parts, "%#StatusLineSep#│ %#StatusLineError#E:" .. errors .. " %#StatusLine#")
-	end
-	if warnings > 0 then
-		table.insert(parts, "%#StatusLineSep#│ %#StatusLineWarn#W:" .. warnings .. " %#StatusLine#")
-	end
-	return table.concat(parts, "")
-end
-opt.statusline = "%{%v:lua.SimpleStatusline()%}"
 
 -- Per-split identifier winbar: makes it obvious which buffer/split you're in
--- when several are open side by side, with a modified indicator. (point 6)
+-- when several are open side by side, with a modified indicator.
+-- (The bottom statusline itself is now handled by lualine.nvim, see the
+-- plugin spec section below.)
 function _G.SimpleWinbar()
 	local filename = vim.fn.expand("%:t")
 	if filename == "" then
@@ -119,13 +93,6 @@ function _G.SimpleWinbar()
 	return "  " .. filename .. modified .. "  "
 end
 opt.winbar = "%{%v:lua.SimpleWinbar()%}"
-
--- Keep the statusline diagnostic counts fresh without extra lag
-vim.api.nvim_create_autocmd({ "DiagnosticChanged", "BufEnter", "TextChanged", "InsertLeave" }, {
-	callback = function()
-		vim.cmd("redrawstatus")
-	end,
-})
 
 -- ========================================================================== --
 -- 4. GLOBAL KEYMAPS
@@ -179,12 +146,45 @@ vim.keymap.set("n", "<C-q>", "<cmd>mksession! .nvim_session | qa!<CR>", { desc =
 vim.keymap.set("n", "<leader>mp", "<cmd>RenderMarkdown preview<CR>", { desc = "Open Terminal-Native Markdown Preview" })
 vim.keymap.set("n", "<leader>mt", "<cmd>RenderMarkdown toggle<CR>", { desc = "Open Terminal-Native Markdown toggle" })
 
+-- Fix: toggling diagnostics with <leader>df / <leader>dw repeatedly used to
+-- leave the cursor "stuck" off the code buffer, even when it was the only
+-- window left, because Trouble's own close() doesn't reliably hand focus
+-- back. We check whether Trouble was open *before* toggling, and if we just
+-- closed it, explicitly hop back to the first normal, editable window.
+local function is_trouble_open()
+	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		local buf = vim.api.nvim_win_get_buf(win)
+		if vim.bo[buf].filetype == "trouble" then
+			return true
+		end
+	end
+	return false
+end
+
+local function focus_code_window()
+	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+		local buf = vim.api.nvim_win_get_buf(win)
+		if vim.bo[buf].buftype == "" and vim.bo[buf].filetype ~= "trouble" then
+			vim.api.nvim_set_current_win(win)
+			return
+		end
+	end
+end
+
+local function toggle_trouble(opts)
+	local was_open = is_trouble_open()
+	require("trouble").toggle(opts)
+	if was_open then
+		vim.schedule(focus_code_window)
+	end
+end
+
 vim.keymap.set("n", "<leader>df", function()
-	require("trouble").toggle({ mode = "diagnostics", filter = { buf = 0 } })
+	toggle_trouble({ mode = "diagnostics", filter = { buf = 0 } })
 end, { desc = "Diagnostics (Current File)" })
 
 vim.keymap.set("n", "<leader>dw", function()
-	require("trouble").toggle({ mode = "diagnostics" })
+	toggle_trouble({ mode = "diagnostics" })
 end, { desc = "Diagnostics (Workspace)" })
 
 vim.keymap.set("t", "<C-Left>", [[<C-\><C-n><C-w>h]], { desc = "Navigate Left from Terminal" })
@@ -194,9 +194,23 @@ vim.keymap.set("t", "<C-Down>", [[<C-\><C-n><C-w>j]], { desc = "Navigate Lower f
 vim.keymap.set("t", "<C-w>", [[<C-\><C-n><C-w>]], { desc = "Allow Ctrl+W window navigation inside terminal" })
 
 -- VSCode-style indenting: select with Shift-V, tap Tab/Shift-Tab to indent
--- and stay in visual mode so you can keep pressing it. (point 5)
+-- and stay in visual mode so you can keep pressing it.
 vim.keymap.set("v", "<Tab>", ">gv", { desc = "Indent Selection" })
 vim.keymap.set("v", "<S-Tab>", "<gv", { desc = "Outdent Selection" })
+
+-- Fix: normal-mode deletes ("dd", "D", etc.) keep the old behavior and still
+-- go to the system clipboard (this is just vim's default with
+-- clipboard=unnamedplus, so nothing to remap there). Visual-mode
+-- delete/change ("ved", "vwd", "vec", ...) are the ones that should NOT
+-- touch the clipboard/unnamed register - those are mapped to the
+-- black-hole register below so replacing a selection never overwrites what
+-- you last yanked, and "p" over a selection doesn't clobber it either, so
+-- you can paste the same thing into another selection right after.
+vim.keymap.set("v", "d", '"_d', { desc = "Delete selection without overwriting register" })
+vim.keymap.set("v", "D", '"_D', { desc = "Delete to EOL (visual) without overwriting register" })
+vim.keymap.set("v", "c", '"_c', { desc = "Change selection without overwriting register" })
+vim.keymap.set("v", "C", '"_C', { desc = "Change to EOL (visual) without overwriting register" })
+vim.keymap.set("x", "p", '"_dP', { desc = "Paste over selection without overwriting register" })
 
 -- Quick window focus / layout reset
 local function focus_editor()
@@ -243,7 +257,7 @@ end
 vim.keymap.set("n", "<leader>wf", focus_editor, { desc = "Focus Editor" })
 
 -- ========================================================================== --
--- 5. MARKDOWN / NOTES QUALITY-OF-LIFE (point 7)
+-- 5. MARKDOWN / NOTES QUALITY-OF-LIFE
 -- ========================================================================== --
 vim.api.nvim_create_autocmd("FileType", {
 	pattern = "markdown",
@@ -352,7 +366,7 @@ require("lazy").setup({
 			vim.g.gruvbox_material_disable_italic_comment = 0
 			vim.g.gruvbox_material_transparent_background = 2
 			vim.g.gruvbox_material_dim_inactive_windows = 1
-			vim.g.gruvbox_material_better_performance = 1 -- perf: skip a few cosmetic passes (point 10)
+			vim.g.gruvbox_material_better_performance = 1 -- perf: skip a few cosmetic passes
 
 			vim.cmd.colorscheme("gruvbox-material")
 
@@ -371,13 +385,88 @@ require("lazy").setup({
 
 	{
 		"romgrk/barbar.nvim",
-		event = "VeryLazy", -- perf: don't block startup for the bufferline (point 10)
+		event = "VeryLazy", -- perf: don't block startup for the bufferline
 		dependencies = { "lewis6991/gitsigns.nvim", "nvim-tree/nvim-web-devicons" },
 		init = function()
 			vim.g.barbar_auto_setup = false
 		end,
 		opts = {},
 		version = "^1.0.0",
+	},
+
+	-- Bottom statusline: filename, line count, error/warning counts. Replaces
+	-- the old hand-rolled statusline with lualine, kept to the same 3 pieces
+	-- of information (nothing else).
+	{
+		"nvim-lualine/lualine.nvim",
+		event = "VeryLazy",
+		dependencies = { "nvim-tree/nvim-web-devicons" },
+		config = function()
+			require("lualine").setup({
+				options = {
+					theme = "auto",
+					globalstatus = true, -- one global statusline, matches laststatus = 3
+					component_separators = { left = "│", right = "│" },
+					section_separators = { left = "", right = "" },
+				},
+				sections = {
+					lualine_a = { "filename" },
+					lualine_b = {},
+					lualine_c = {},
+					lualine_x = {
+						{
+							function()
+								return "Lines: " .. vim.fn.line("$")
+							end,
+						},
+					},
+					lualine_y = {
+						{
+							-- Built directly on vim.diagnostic.count() (same call your
+							-- old custom statusline used) instead of lualine's built-in
+							-- "diagnostics" component, so counts show reliably regardless
+							-- of which diagnostic source lualine expects.
+							function()
+								local ok, counts = pcall(vim.diagnostic.count, 0)
+								if not ok or not counts then
+									return ""
+								end
+								local errors = counts[vim.diagnostic.severity.ERROR] or 0
+								local warnings = counts[vim.diagnostic.severity.WARN] or 0
+								local parts = {}
+								if errors > 0 then
+									table.insert(parts, "E:" .. errors)
+								end
+								if warnings > 0 then
+									table.insert(parts, "W:" .. warnings)
+								end
+								return table.concat(parts, " ")
+							end,
+							color = function()
+								local ok, counts = pcall(vim.diagnostic.count, 0)
+								if not ok or not counts then
+									return
+								end
+								if (counts[vim.diagnostic.severity.ERROR] or 0) > 0 then
+									return { fg = "#f38ba8", bold = true }
+								elseif (counts[vim.diagnostic.severity.WARN] or 0) > 0 then
+									return { fg = "#fab387", bold = true }
+								end
+							end,
+						},
+					},
+					lualine_z = {},
+				},
+				inactive_sections = {
+					lualine_a = {},
+					lualine_b = {},
+					lualine_c = { "filename" },
+					lualine_x = { "location" },
+					lualine_y = {},
+					lualine_z = {},
+				},
+			})
+		end,
 	},
 
 	{ "windwp/nvim-autopairs", event = "InsertEnter", config = true },
@@ -396,7 +485,7 @@ require("lazy").setup({
 	},
 
 	-- Obsidian-style notes: wiki-links, backlinks, tags, daily notes,
-	-- checkboxes - layered on top of render-markdown.nvim. (point 7)
+	-- checkboxes - layered on top of render-markdown.nvim.
 	-- NOTE: update workspaces.path below to point at your real notes folder.
 	{
 		"epwalsh/obsidian.nvim",
@@ -435,16 +524,64 @@ require("lazy").setup({
 
 	{ "nvim-treesitter/nvim-treesitter-textobjects" },
 
+	-- Multi-cursor editing on word/symbol occurrences.
+	--   <C-d> on a word          -> select it, <C-d> again to add the next
+	--                                occurrence (VSCode-style)
+	--   c / C  (in multicursor mode) -> delete every selection and drop
+	--                                    straight into insert, so whatever
+	--                                    you type next replaces all of them
+	--   i / a                    -> just enter insert mode at each
+	--                                selection without deleting it
+	--   P      (in multicursor mode) -> paste the current register over
+	--                                    every selection
+	--   Esc                      -> leave multicursor mode
 	{
 		"smoka7/multicursors.nvim",
 		event = "VeryLazy",
 		dependencies = { "nvimtools/hydra.nvim" },
-		opts = {},
+		opts = {
+			hint_config = false, -- no more floating hint/options window popping up
+			normal_keys = {
+				C = {
+					method = function()
+						require("multicursors.utils").call_on_selections(function(selection)
+							vim.api.nvim_buf_set_text(
+								0,
+								selection.row,
+								selection.col,
+								selection.end_row,
+								selection.end_col,
+								{}
+							)
+						end)
+						vim.cmd("startinsert")
+					end,
+					opts = { desc = "Clear all selections and start typing" },
+				},
+				P = {
+					method = function()
+						local reg = vim.fn.getreg('"')
+						local lines = vim.split(reg, "\n")
+						require("multicursors.utils").call_on_selections(function(selection)
+							vim.api.nvim_buf_set_text(
+								0,
+								selection.row,
+								selection.col,
+								selection.end_row,
+								selection.end_col,
+								lines
+							)
+						end)
+					end,
+					opts = { desc = "Paste register over all selections" },
+				},
+			},
+		},
 		config = function(_, opts)
 			require("multicursors").setup(opts)
 			vim.keymap.set({ "n", "v" }, "<C-d>", function()
 				vim.cmd("MCstart")
-			end, { silent = true })
+			end, { silent = true, desc = "Multi-cursor: select word under cursor / next match" })
 		end,
 	},
 
@@ -525,7 +662,7 @@ require("lazy").setup({
 	},
 
 	{
-		-- Enriched git workflow (points 2 & 3):
+		-- Enriched git workflow:
 		--   <leader>gf  -> current file's history across commits, two-pane
 		--                  (LEFT = your working copy, editable; RIGHT = the
 		--                  commit selected in the log panel, with live preview
@@ -605,13 +742,13 @@ require("lazy").setup({
 				end
 			end
 
-			-- Point 2: current file across commits, two-pane, left editable / right preview
+			-- current file across commits, two-pane, left editable / right preview
 			vim.keymap.set("n", "<leader>gf", function()
 				pcall(vim.cmd, "NvimTreeClose")
 				vim.cmd("DiffviewFileHistory % --base=LOCAL")
 			end, { desc = "File History (Two-Pane Diff)" })
 
-			-- Point 3: visual-select lines, then see only those lines' history
+			-- visual-select lines, then see only those lines' history
 			vim.keymap.set("v", "<leader>gl", "<Esc><Cmd>'<,'>DiffviewFileHistory<CR>", {
 				desc = "Line History Across Commits",
 			})
@@ -654,7 +791,7 @@ require("lazy").setup({
 		end,
 	},
 
-	-- Lean which-key guide (point 8): only top-level groups + the handful of
+	-- Lean which-key guide: only top-level groups + the handful of
 	-- mappings that aren't self-explanatory from their buffer-local `desc`.
 	{
 		"folke/which-key.nvim",
@@ -745,11 +882,11 @@ require("lazy").setup({
 						},
 					},
 				},
-				-- Point 9: you develop on macOS but target Linux, and libc /
-				-- other unix-only crates don't resolve correctly if
-				-- rust-analyzer assumes the host (mac) target. Pinning the
-				-- cargo target to a Linux triple makes it analyze the
-				-- project as if it were being built on Linux.
+				-- You develop on macOS but target Linux, and libc / other
+				-- unix-only crates don't resolve correctly if rust-analyzer
+				-- assumes the host (mac) target. Pinning the cargo target to a
+				-- Linux triple makes it analyze the project as if it were
+				-- being built on Linux.
 				rust_analyzer = {
 					settings = {
 						["rust-analyzer"] = {
@@ -779,7 +916,7 @@ require("lazy").setup({
 	{
 		"saghen/blink.cmp",
 		version = "*",
-		event = "InsertEnter", -- perf: only load once you actually start typing (point 10)
+		event = "InsertEnter", -- perf: only load once you actually start typing
 		dependencies = { "rafamadriz/friendly-snippets", "onsails/lspkind.nvim" },
 		opts = {
 			keymap = {
@@ -858,7 +995,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 	end,
 })
 
--- Point 4: this is the main fix for "weird errors that build up over hours".
+-- This is the main fix for "weird errors that build up over hours".
 -- The most common cause is orphaned LSP clients / stale diagnostics left
 -- behind on buffers that were closed and reopened. Clearing diagnostics on
 -- detach, and stopping any client with no attached buffers left, reproduces
