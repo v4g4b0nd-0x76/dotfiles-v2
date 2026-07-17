@@ -820,7 +820,7 @@ require("lazy").setup({
 				{ "<leader>wp", "<cmd>BufferPrevious<CR>", desc = "Previous Buffer" },
 				{ "<leader>ww", "<cmd>BufferPick<CR>", desc = "Pick Buffer" },
 				{ "<leader>wl", "<cmd>BufferPin<CR>", desc = "Pin Buffer" },
-				{ "<leader>wc", "<cmd>BufferClose<CR>", desc = "Close Buffer" },
+                { "<leader>wc", "<cmd>wq!<CR>", desc = "Write and Quit" },
 				{ "<leader>gh", desc = "File History Log (Split)" },
 			})
 		end,
@@ -1035,3 +1035,13 @@ vim.api.nvim_create_autocmd("VimEnter", {
 		end
 	end,
 })
+local original_notify = vim.notify
+vim.notify = function(msg, log_level, opts)
+	if msg and msg:match("rust_analyzer: %-32603: request handler panicked") then
+		return
+	end
+	original_notify(msg, log_level, opts)
+end
+
+
+
