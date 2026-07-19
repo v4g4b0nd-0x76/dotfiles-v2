@@ -198,19 +198,6 @@ vim.keymap.set("t", "<C-w>", [[<C-\><C-n><C-w>]], { desc = "Allow Ctrl+W window 
 vim.keymap.set("v", "<Tab>", ">gv", { desc = "Indent Selection" })
 vim.keymap.set("v", "<S-Tab>", "<gv", { desc = "Outdent Selection" })
 
--- Fix: normal-mode deletes ("dd", "D", etc.) keep the old behavior and still
--- go to the system clipboard (this is just vim's default with
--- clipboard=unnamedplus, so nothing to remap there). Visual-mode
--- delete/change ("ved", "vwd", "vec", ...) are the ones that should NOT
--- touch the clipboard/unnamed register - those are mapped to the
--- black-hole register below so replacing a selection never overwrites what
--- you last yanked, and "p" over a selection doesn't clobber it either, so
--- you can paste the same thing into another selection right after.
-vim.keymap.set("v", "d", '"_d', { desc = "Delete selection without overwriting register" })
-vim.keymap.set("v", "D", '"_D', { desc = "Delete to EOL (visual) without overwriting register" })
-vim.keymap.set("v", "c", '"_c', { desc = "Change selection without overwriting register" })
-vim.keymap.set("v", "C", '"_C', { desc = "Change to EOL (visual) without overwriting register" })
-vim.keymap.set("x", "p", '"_dP', { desc = "Paste over selection without overwriting register" })
 
 -- Quick window focus / layout reset
 local function focus_editor()
