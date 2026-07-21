@@ -325,11 +325,20 @@ local function lsp_on_attach(client, bufnr)
 		vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled({ bufnr = bufnr }), { bufnr = bufnr })
 	end, { buffer = bufnr, desc = "Toggle Inlay Hints" })
 
+	-- Rust-only: rust_analyzer is the one server that reliably gets into a
+	-- stuck/panicked state worth force-restarting. Restrict this to actual
+	-- rust file buffers (buftype == "" means a normal, on-disk/editable
+	-- buffer, not a terminal/help/nofile buffer) so it's never fired
+	-- somewhere it can't do anything useful.
 	vim.keymap.set("n", "<leader>lR", function()
+		if vim.bo[bufnr].filetype ~= "rust" or vim.bo[bufnr].buftype ~= "" then
+			vim.notify("LSP restart is only available for Rust files", vim.log.levels.WARN)
+			return
+		end
 		vim.diagnostic.reset(nil, bufnr)
 		vim.cmd("LspRestart")
 		vim.notify("LSP restarted for this buffer", vim.log.levels.INFO)
-	end, { buffer = bufnr, desc = "Restart LSP (fix stuck diagnostics/errors)" })
+	end, { buffer = bufnr, desc = "Restart LSP (Rust only)" })
 
 	if client:supports_method("textDocument/inlayHint") then
 		vim.lsp.inlay_hint.enable(false, { bufnr = bufnr })
@@ -818,6 +827,11 @@ require("lazy").setup({
 	{
 		"stevearc/conform.nvim",
 		event = { "BufWritePre" },
+		-- goimports and gofumpt are plain CLI tools, not LSP servers, so
+		-- mason-lspconfig's ensure_installed (below) won't fetch them.
+		-- Install once with :MasonInstall goimports gofumpt (or
+		-- `go install golang.org/x/tools/cmd/goimports@latest` and
+		-- `go install mvdan.cc/gofumpt@latest` if you'd rather use `go install`).
 		opts = {
 			formatters_by_ft = {
 				typescript = { "prettierd" },
@@ -829,6 +843,14 @@ require("lazy").setup({
 				c = { "clang-format" },
 				sh = { "shfmt" },
 				markdown = { "prettierd" },
+				-- goimports removes unused imports + adds missing ones, then
+				-- gofumpt applies a stricter superset of gofmt formatting.
+				-- Order matters: imports are fixed first, then formatted.
+				go = { "goimports", "gofumpt" },
+			},
+			format_on_save = {
+				timeout_ms = 2000,
+				lsp_format = "fallback",
 			},
 		},
 	},
@@ -886,7 +908,33 @@ require("lazy").setup({
 						},
 					},
 				},
-				gopls = {},
+				-- Mirrors the rust_analyzer treatment above: richer analyses,
+				-- inlay hints, and gofumpt-aware formatting so gopls agrees
+				-- with the conform.nvim formatters configured for Go.
+				gopls = {
+					settings = {
+						gopls = {
+							gofumpt = true,
+							usePlaceholders = true,
+							completeUnimported = true,
+							staticcheck = true,
+							directoryFilters = { "-.git", "-node_modules" },
+							analyses = {
+								unusedparams = true,
+								unusedwrite = true,
+								shadow = true,
+							},
+							hints = {
+								assignVariableTypes = true,
+								compositeLiteralFields = true,
+								constantValues = true,
+								functionTypeParameters = true,
+								parameterNames = true,
+								rangeVariableTypes = true,
+							},
+						},
+					},
+				},
 				bashls = {},
 				dockerls = {},
 				marksman = {},
@@ -1029,6 +1077,3 @@ vim.notify = function(msg, log_level, opts)
 	end
 	original_notify(msg, log_level, opts)
 end
-
-
-
