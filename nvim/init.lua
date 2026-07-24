@@ -1076,3 +1076,27 @@ vim.notify = function(msg, log_level, opts)
 	end
 	original_notify(msg, log_level, opts)
 end
+
+-- Closes every real buffer. Buffers backed by a file that no longer exists
+-- on disk (renamed/deleted outside nvim) are force-closed automatically,
+-- since there's nothing left to save. Buffers with unsaved changes to a
+-- file that DOES still exist are left alone (nvim will just refuse the
+-- delete rather than silently losing your edits).
+local function close_all_tabs()
+	local skipped = 0
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == "" then
+			local name = vim.api.nvim_buf_get_name(buf)
+			local file_missing = name ~= "" and vim.fn.filereadable(name) == 0
+
+			local ok = pcall(vim.api.nvim_buf_delete, buf, { force = file_missing })
+			if not ok then
+				skipped = skipped + 1
+			end
+		end
+	end
+	if skipped > 0 then
+		vim.notify(skipped .. " buffer(s) kept open (unsaved changes)", vim.log.levels.WARN)
+	end
+end
+vim.keymap.set("n", "<leader>wA", close_all_tabs, { desc = "Close All Tabs (Auto-Clean Missing Files)" })
