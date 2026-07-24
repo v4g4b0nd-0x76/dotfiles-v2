@@ -198,7 +198,6 @@ vim.keymap.set("t", "<C-w>", [[<C-\><C-n><C-w>]], { desc = "Allow Ctrl+W window 
 vim.keymap.set("v", "<Tab>", ">gv", { desc = "Indent Selection" })
 vim.keymap.set("v", "<S-Tab>", "<gv", { desc = "Outdent Selection" })
 
-
 -- Quick window focus / layout reset
 local function focus_editor()
 	pcall(vim.cmd, "NvimTreeClose")
@@ -816,7 +815,7 @@ require("lazy").setup({
 				{ "<leader>wp", "<cmd>BufferPrevious<CR>", desc = "Previous Buffer" },
 				{ "<leader>ww", "<cmd>BufferPick<CR>", desc = "Pick Buffer" },
 				{ "<leader>wl", "<cmd>BufferPin<CR>", desc = "Pin Buffer" },
-                { "<leader>wc", "<cmd>wq!<CR>", desc = "Write and Quit" },
+				{ "<leader>wc", "<cmd>wq!<CR>", desc = "Write and Quit" },
 				{ "<leader>gh", desc = "File History Log (Split)" },
 			})
 		end,

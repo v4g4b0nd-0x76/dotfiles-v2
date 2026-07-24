@@ -1,0 +1,16 @@
+font-family = FiraCode Nerd
+font-size = 16
+
+confirm-close-surface = false
+window-decoration = false
+
+cursor-style = bar
+cursor-style-blink = false
+
+scrollback-limit = 10000000
+background-opacity = 0.95
+
+theme = Gruvbox Material Dark
+window-vsync = false
+background-blur = false
+font-thicken = true
