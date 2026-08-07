@@ -11,6 +11,7 @@
 --   7. LSP on_attach
 --   8. Plugin specs
 --   9. Autocommands (LSP health/cleanup, terminal, sessions, focus helper)
+--  10. Project management (save/list/delete projects, JSON-backed)
 -- ========================================================================== --
 
 -- ========================================================================== --
@@ -23,6 +24,25 @@ vim.g.loaded_python3_provider = 0
 vim.g.loaded_ruby_provider = 0
 vim.g.loaded_perl_provider = 0
 vim.g.loaded_node_provider = 0
+
+-- Fix: `cd A && nvim B/main.rs` left the working directory at A (the shell's
+-- cwd nvim was launched from), not at B. Since nvim-tree, telescope, and
+-- `getcwd()`-based project logic all key off the working directory, that
+-- made nvim-tree open showing A's entries instead of B's, even though the
+-- buffer itself was clearly under B. This runs synchronously before any
+-- plugin loads: if a file/dir was passed on the command line, jump the cwd
+-- to its git root (or its own directory if no .git is found upward), so
+-- everything downstream (nvim-tree, telescope, the project keymaps below,
+-- session sourcing) is rooted where the file actually lives.
+do
+	local first_arg = vim.fn.argv(0)
+	if type(first_arg) == "string" and first_arg ~= "" then
+		local target = vim.fn.fnamemodify(first_arg, ":p")
+		local dir = (vim.fn.isdirectory(target) == 1) and target or vim.fn.fnamemodify(target, ":h")
+		local root = vim.fs.root(dir, { ".git" }) or dir
+		pcall(vim.fn.chdir, root)
+	end
+end
 
 local opt = vim.opt
 opt.number = true
@@ -780,6 +800,18 @@ require("lazy").setup({
 						},
 					},
 				},
+				-- Fix (paired with the cwd jump at the top of this file): even
+				-- with the correct cwd on startup, nvim-tree can otherwise drift
+				-- back to whatever the *shell's* cwd was as you move between
+				-- buffers in different subdirectories. These two options keep
+				-- the tree's root following the actual project you're editing
+				-- (git-root aware) instead of silently pinning to A.
+				update_focused_file = {
+					enable = true,
+					update_root = { enable = true, ignore_list = {} },
+				},
+				respect_buf_cwd = true,
+				sync_root_with_cwd = true,
 				view = { width = 30 },
 			})
 			vim.keymap.set("n", "<leader>e", ":NvimTreeToggle<CR>", { silent = true, desc = "Toggle File Tree" })
@@ -806,6 +838,7 @@ require("lazy").setup({
 				{ "<leader>g", group = "Git" },
 				{ "<leader>l", group = "LSP" },
 				{ "<leader>n", group = "Notes" },
+				{ "<leader>p", group = "Project" },
 				{ "<leader>wq", "<C-w>c", desc = "Close Split" },
 				{ "<leader>wo", "<C-w>o", desc = "Only This Window" },
 				{ "<leader>w=", "<C-w>=", desc = "Equalize Splits" },
@@ -1100,3 +1133,110 @@ local function close_all_tabs()
 	end
 end
 vim.keymap.set("n", "<leader>wA", close_all_tabs, { desc = "Close All Tabs (Auto-Clean Missing Files)" })
+
+-- ========================================================================== --
+-- 10. PROJECT MANAGEMENT
+-- ========================================================================== --
+-- <leader>ps  -> save the current working directory as a named project
+-- <leader>pd  -> pick a saved project and delete it
+-- <leader>pl  -> pick a saved project and jump (cd) to it, refreshing nvim-tree
+--
+-- Projects are stored as { name = { path = "..." }, ... } in a JSON file at
+-- ~/.config/nvim/projects.json (stdpath("config") so it follows your
+-- normal nvim config location, not hardcoded to $HOME).
+
+local projects_file = vim.fn.stdpath("config") .. "/projects.json"
+
+local function projects_load()
+	if vim.fn.filereadable(projects_file) == 0 then
+		return {}
+	end
+	local raw = table.concat(vim.fn.readfile(projects_file), "\n")
+	if raw == "" then
+		return {}
+	end
+	local ok, decoded = pcall(vim.fn.json_decode, raw)
+	if not ok or type(decoded) ~= "table" then
+		vim.notify("projects.json is corrupt, starting fresh", vim.log.levels.WARN)
+		return {}
+	end
+	return decoded
+end
+
+local function projects_save(projects)
+	local ok, encoded = pcall(vim.fn.json_encode, projects)
+	if not ok then
+		vim.notify("Failed to encode projects.json", vim.log.levels.ERROR)
+		return
+	end
+	vim.fn.writefile({ encoded }, projects_file)
+end
+
+local function project_save()
+	local default_name = vim.fn.fnamemodify(vim.fn.getcwd(), ":t")
+	vim.ui.input({ prompt = "Save project as: ", default = default_name }, function(name)
+		if not name or name == "" then
+			return
+		end
+		local projects = projects_load()
+		projects[name] = { path = vim.fn.getcwd() }
+		projects_save(projects)
+		vim.notify("Saved project '" .. name .. "' -> " .. vim.fn.getcwd(), vim.log.levels.INFO)
+	end)
+end
+
+local function project_delete()
+	local projects = projects_load()
+	local names = vim.tbl_keys(projects)
+	if #names == 0 then
+		vim.notify("No saved projects", vim.log.levels.WARN)
+		return
+	end
+	table.sort(names)
+	vim.ui.select(names, {
+		prompt = "Delete project:",
+		format_item = function(name)
+			return name .. "  (" .. projects[name].path .. ")"
+		end,
+	}, function(choice)
+		if not choice then
+			return
+		end
+		projects[choice] = nil
+		projects_save(projects)
+		vim.notify("Deleted project '" .. choice .. "'", vim.log.levels.INFO)
+	end)
+end
+
+local function project_list()
+	local projects = projects_load()
+	local names = vim.tbl_keys(projects)
+	if #names == 0 then
+		vim.notify("No saved projects", vim.log.levels.WARN)
+		return
+	end
+	table.sort(names)
+	vim.ui.select(names, {
+		prompt = "Open project:",
+		format_item = function(name)
+			return name .. "  (" .. projects[name].path .. ")"
+		end,
+	}, function(choice)
+		if not choice then
+			return
+		end
+		local path = projects[choice].path
+		if vim.fn.isdirectory(path) == 0 then
+			vim.notify("Project path no longer exists: " .. path, vim.log.levels.ERROR)
+			return
+		end
+		vim.cmd("cd " .. vim.fn.fnameescape(path))
+		-- Keep nvim-tree's root in sync if it's already loaded/open.
+		pcall(vim.cmd, "NvimTreeChangeRoot " .. vim.fn.fnameescape(path))
+		vim.notify("Switched to project '" .. choice .. "' -> " .. path, vim.log.levels.INFO)
+	end)
+end
+
+vim.keymap.set("n", "<leader>ps", project_save, { desc = "Save Project" })
+vim.keymap.set("n", "<leader>pd", project_delete, { desc = "Delete Project" })
+vim.keymap.set("n", "<leader>pl", project_list, { desc = "List Projects" })
