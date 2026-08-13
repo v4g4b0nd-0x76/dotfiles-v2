@@ -70,6 +70,25 @@ opt.autowrite = true
 opt.laststatus = 3 -- ONE global statusline at the very bottom (lualine uses this too)
 opt.fillchars = { vert = "│", eob = " " } -- cleaner vertical split separators
 
+-- Keep diagnostics useful without turning the editor into a wall of noise.
+-- Deep LSP diagnostics are shown in the sign column and at the end of the
+-- affected line; the full message remains one keystroke away with `K`.
+vim.diagnostic.config({
+	severity_sort = true,
+	underline = true,
+	update_in_insert = false,
+	virtual_text = { spacing = 3, prefix = "●", source = "if_many" },
+	float = { border = "rounded", source = "if_many", severity_sort = true },
+	signs = {
+		text = {
+			[vim.diagnostic.severity.ERROR] = "✘",
+			[vim.diagnostic.severity.WARN] = "▲",
+			[vim.diagnostic.severity.INFO] = "●",
+			[vim.diagnostic.severity.HINT] = "●",
+		},
+	},
+})
+
 -- ========================================================================== --
 -- 2. HIGHLIGHT GROUPS
 -- ========================================================================== --
@@ -163,28 +182,56 @@ vim.keymap.set("n", "<C-Up>", "<C-w>k", { desc = "Navigate to Upper Window" })
 vim.keymap.set("n", "<C-Down>", "<C-w>j", { desc = "Navigate to Lower Window" })
 vim.keymap.set("n", "<C-S-z>", "<C-r>", { desc = "Redo Last Undo" })
 vim.keymap.set("n", "<C-q>", "<cmd>mksession! .nvim_session | qa!<CR>", { desc = "Save Session and Quit Instantly" })
-vim.keymap.set("n", "<leader>mp", "<cmd>RenderMarkdown preview<CR>", { desc = "Open Terminal-Native Markdown Preview" })
+-- Render the current, saved Markdown file with Glow in a dedicated tab. This
+-- complements the live editing view with a faithful final-read preview.
+local function glow_preview()
+	if vim.bo.filetype ~= "markdown" then
+		vim.notify("Glow preview is only available for Markdown files", vim.log.levels.WARN)
+		return
+	end
+	if vim.fn.executable("glow") == 0 then
+		vim.notify("Glow is not available on PATH", vim.log.levels.ERROR)
+		return
+	end
+
+	local filename = vim.api.nvim_buf_get_name(0)
+	if filename == "" or vim.fn.filereadable(filename) == 0 then
+		vim.notify("Save this note before opening its Glow preview", vim.log.levels.WARN)
+		return
+	end
+
+	vim.cmd("tabnew")
+	local width = math.max(vim.o.columns - 8, 40)
+	vim.fn.termopen({ "glow", "--pager", "--style", "dark", "--width", tostring(width), filename })
+	vim.bo.bufhidden = "wipe"
+	vim.bo.filetype = "glow"
+	vim.keymap.set("n", "q", "<cmd>bd!<CR>", { buffer = true, silent = true, desc = "Close Glow Preview" })
+	vim.cmd("startinsert")
+end
+
+vim.api.nvim_create_user_command("GlowPreview", glow_preview, { desc = "Preview the current Markdown file with Glow" })
+vim.keymap.set("n", "<leader>mp", "<cmd>GlowPreview<CR>", { desc = "Preview Markdown with Glow" })
 vim.keymap.set("n", "<leader>mt", "<cmd>RenderMarkdown toggle<CR>", { desc = "Open Terminal-Native Markdown toggle" })
 
--- Fix: toggling diagnostics with <leader>df / <leader>dw repeatedly used to
--- leave the cursor "stuck" off the code buffer, even when it was the only
--- window left, because Trouble's own close() doesn't reliably hand focus
--- back. We check whether Trouble was open *before* toggling, and if we just
--- closed it, explicitly hop back to the first normal, editable window.
-local function is_trouble_open()
-	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-		local buf = vim.api.nvim_win_get_buf(win)
-		if vim.bo[buf].filetype == "trouble" then
-			return true
-		end
+-- Trouble can be closed from its own `q` mapping as well as from the leader
+-- mappings below.  Always restore focus after *any* close, rather than trying
+-- to infer panel state from its buffer. This avoids the occasional state where
+-- the panel has disappeared but the current window is still a stale Trouble
+-- buffer, so the next toggle only repairs focus instead of opening diagnostics.
+local function is_editor_window(win)
+	if not vim.api.nvim_win_is_valid(win) then
+		return false
 	end
-	return false
+	local buf = vim.api.nvim_win_get_buf(win)
+	return vim.bo[buf].buftype == "" and vim.bo[buf].filetype ~= "trouble"
 end
 
 local function focus_code_window()
+	if is_editor_window(vim.api.nvim_get_current_win()) then
+		return
+	end
 	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-		local buf = vim.api.nvim_win_get_buf(win)
-		if vim.bo[buf].buftype == "" and vim.bo[buf].filetype ~= "trouble" then
+		if is_editor_window(win) then
 			vim.api.nvim_set_current_win(win)
 			return
 		end
@@ -192,10 +239,14 @@ local function focus_code_window()
 end
 
 local function toggle_trouble(opts)
-	local was_open = is_trouble_open()
-	require("trouble").toggle(opts)
-	if was_open then
+	local trouble = require("trouble")
+	if trouble.is_open(opts) then
+		trouble.close(opts)
+		-- The on_close hook covers q/Esc too; this schedule also makes the
+		-- leader mapping safe with versions of Trouble that close asynchronously.
 		vim.schedule(focus_code_window)
+	else
+		trouble.open(opts)
 	end
 end
 
@@ -271,6 +322,8 @@ vim.api.nvim_create_autocmd("FileType", {
 		vim.opt_local.conceallevel = 2 -- hides markup like Obsidian's live-preview
 		vim.opt_local.wrap = true
 		vim.opt_local.linebreak = true
+		vim.opt_local.breakindent = true
+		vim.opt_local.showbreak = "  "
 		vim.opt_local.spell = true
 		vim.opt_local.spelllang = "en_us"
 		vim.opt_local.foldmethod = "expr"
@@ -311,6 +364,9 @@ local function lsp_on_attach(client, bufnr)
 		ts_builtin.lsp_definitions({ jump_type = "split" })
 	end, { buffer = bufnr, desc = "LSP Definition (Horizontal Split)" })
 	vim.keymap.set("n", "gD", vim.lsp.buf.declaration, opts)
+	vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, { buffer = bufnr, desc = "Previous Diagnostic" })
+	vim.keymap.set("n", "]d", vim.diagnostic.goto_next, { buffer = bufnr, desc = "Next Diagnostic" })
+	vim.keymap.set("n", "<leader>ld", vim.diagnostic.setloclist, { buffer = bufnr, desc = "Buffer Diagnostics List" })
 	vim.keymap.set("n", "gr", function()
 		ts_builtin.lsp_references({ include_declaration = false })
 	end, opts)
@@ -493,15 +549,32 @@ require("lazy").setup({
 		config = function()
 			require("render-markdown").setup({
 				completions = { lsp = { enabled = true } },
+				-- Keep syntax visible while actively editing a line, then render it
+				-- as a clean live preview when the cursor moves away (Obsidian-like).
+				anti_conceal = {
+					enabled = true,
+					above = 1,
+					below = 1,
+					ignore = { code_background = true, indent = true, link = true, sign = true, virtual_lines = true },
+				},
+				heading = { position = "inline", width = "block" },
 				code = { style = "full", position = "left", width = "block", left_pad = 2, right_pad = 4 },
 				pipe_table = { preset = "round" },
+				quote = { repeat_linebreak = true },
+				checkbox = {
+					custom = {
+						todo = { raw = "[-]", rendered = "󰥔 ", highlight = "RenderMarkdownTodo" },
+						important = { raw = "[!]", rendered = " ", highlight = "RenderMarkdownWarn" },
+						question = { raw = "[?]", rendered = " ", highlight = "RenderMarkdownInfo" },
+						forward = { raw = "[>]", rendered = " ", highlight = "RenderMarkdownHint" },
+					},
+				},
 			})
 		end,
 	},
 
 	-- Obsidian-style notes: wiki-links, backlinks, tags, daily notes,
 	-- checkboxes - layered on top of render-markdown.nvim.
-	-- NOTE: update workspaces.path below to point at your real notes folder.
 	{
 		"epwalsh/obsidian.nvim",
 		version = "*",
@@ -509,14 +582,19 @@ require("lazy").setup({
 		dependencies = { "nvim-lua/plenary.nvim" },
 		opts = {
 			workspaces = {
-				{ name = "notes", path = "~/notes" }, -- << set this to your notes directory
+				{ name = "notes", path = "~/notes" },
 			},
 			completion = {
+				-- obsidian.nvim's bundled completion source is for nvim-cmp only.
+				-- Blink still provides LSP/path/buffer completion; note discovery is
+				-- handled by the dedicated picker commands below.
 				nvim_cmp = false,
-				blink = true,
 				min_chars = 2,
 			},
 			ui = { enable = false }, -- render-markdown.nvim already renders the UI
+			picker = { name = "telescope.nvim" },
+			templates = { folder = "templates" },
+			attachments = { img_folder = "assets" },
 			daily_notes = {
 				folder = "daily",
 				date_format = "%Y-%m-%d",
@@ -534,6 +612,11 @@ require("lazy").setup({
 			vim.keymap.set("n", "<leader>nb", "<cmd>ObsidianBacklinks<CR>", { desc = "Show Backlinks" })
 			vim.keymap.set("n", "<leader>nt", "<cmd>ObsidianTags<CR>", { desc = "Browse Tags" })
 			vim.keymap.set("n", "<leader>nc", "<cmd>ObsidianToggleCheckbox<CR>", { desc = "Toggle Checkbox" })
+			vim.keymap.set("n", "<leader>nl", "<cmd>ObsidianLinks<CR>", { desc = "Links in Note" })
+			vim.keymap.set("n", "<leader>no", "<cmd>ObsidianTOC<CR>", { desc = "Note Outline" })
+			vim.keymap.set("n", "<leader>np", "<cmd>ObsidianPasteImg<CR>", { desc = "Paste Image into Note" })
+			vim.keymap.set("n", "<leader>ny", "<cmd>ObsidianYesterday<CR>", { desc = "Yesterday's Daily Note" })
+			vim.keymap.set("n", "<leader>nr", "<cmd>ObsidianTomorrow<CR>", { desc = "Tomorrow's Daily Note" })
 		end,
 	},
 
@@ -642,6 +725,12 @@ require("lazy").setup({
 			auto_close = false,
 			focus = true,
 			win = { position = "right", size = 60 },
+			on_close = function()
+				-- This fires for Trouble's own q mapping too, not only our
+				-- <leader>d toggles. Defer until Neovim has selected its next
+				-- window, then make sure it is a real editor buffer.
+				vim.schedule(focus_code_window)
+			end,
 			-- NOTE: previously `preview = { type = "split", relative = "win",
 			-- position = "bottom", size = 0.40 }`.
 			-- `relative = "win"` requires Trouble to also pass a concrete
@@ -785,19 +874,31 @@ require("lazy").setup({
 		keys = { { "<leader>e", desc = "Toggle File Tree" } },
 		config = function()
 			require("nvim-tree").setup({
-				renderer = { icons = { show = { file = false, folder = false, folder_arrow = false, git = false } } },
+				renderer = {
+					-- A clean text tree: hierarchy and highlights communicate state
+					-- without depending on icon fonts.
+					group_empty = true,
+					root_folder_label = function(path)
+						return "  " .. vim.fn.fnamemodify(path, ":~")
+					end,
+					indent_width = 2,
+					highlight_git = "name",
+					highlight_opened_files = "all",
+					highlight_modified = "name",
+					indent_markers = {
+						enable = true,
+						inline_arrows = true,
+						icons = { corner = "└", edge = "│", item = "│", bottom = "─", none = " " },
+					},
+					icons = { show = { file = false, folder = false, folder_arrow = false, git = false } },
+				},
 				actions = {
 					open_file = {
 						quit_on_open = false,
-						window_picker = {
-							enable = true,
-							picker = "default",
-							chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890",
-							exclude = {
-								filetype = { "notify", "packer", "qf", "diff", "diffview", "fugitive" },
-								buftype = { "nofile", "terminal", "help" },
-							},
-						},
+						resize_window = true,
+						-- Opening a file returns directly to the previous editor; use
+						-- v/s for deliberate vertical/horizontal splits.
+						window_picker = { enable = false },
 					},
 				},
 				-- Fix (paired with the cwd jump at the top of this file): even
@@ -812,8 +913,44 @@ require("lazy").setup({
 				},
 				respect_buf_cwd = true,
 				sync_root_with_cwd = true,
-				view = { width = 30 },
+				view = { width = 36, preserve_window_proportions = true, centralize_selection = true, cursorline = true },
+				filters = { dotfiles = false, git_ignored = false },
+				on_attach = function(bufnr)
+					local api = require("nvim-tree.api")
+					local function map(lhs, rhs, desc)
+						vim.keymap.set("n", lhs, rhs, {
+							buffer = bufnr,
+							noremap = true,
+							silent = true,
+							nowait = true,
+							desc = desc,
+						})
+					end
+
+					api.config.mappings.default_on_attach(bufnr)
+					map("l", api.node.open.edit, "Open")
+					map("h", api.node.navigate.parent_close, "Close Folder")
+					map("v", api.node.open.vertical, "Open Vertical Split")
+					map("s", api.node.open.horizontal, "Open Horizontal Split")
+					map("a", api.fs.create, "Create")
+					map("r", api.fs.rename, "Rename")
+					map("d", api.fs.remove, "Delete")
+					-- Move workflow: m marks the file/folder for moving (without
+					-- changing it yet); navigate to a destination folder and press p.
+					map("m", api.fs.cut, "Move: Select File or Folder")
+					map("p", api.fs.paste, "Move: Paste into Destination")
+					map("f", api.live_filter.start, "Filter")
+					map("H", api.tree.toggle_hidden_filter, "Toggle Hidden Files")
+					map("R", api.tree.reload, "Refresh")
+				end,
 			})
+
+			local hl = vim.api.nvim_set_hl
+			hl(0, "NvimTreeFolderName", { fg = "#83a598", bold = true })
+			hl(0, "NvimTreeOpenedFolderName", { fg = "#fabd2f", bold = true })
+			hl(0, "NvimTreeRootFolder", { fg = "#d79921", bold = true })
+			hl(0, "NvimTreeOpenedFile", { fg = "#d3869b", bold = true, underline = true })
+			hl(0, "NvimTreeIndentMarker", { fg = "#504945" })
 			vim.keymap.set("n", "<leader>e", ":NvimTreeToggle<CR>", { silent = true, desc = "Toggle File Tree" })
 		end,
 	},
@@ -859,11 +996,6 @@ require("lazy").setup({
 	{
 		"stevearc/conform.nvim",
 		event = { "BufWritePre" },
-		-- goimports and gofumpt are plain CLI tools, not LSP servers, so
-		-- mason-lspconfig's ensure_installed (below) won't fetch them.
-		-- Install once with :MasonInstall goimports gofumpt (or
-		-- `go install golang.org/x/tools/cmd/goimports@latest` and
-		-- `go install mvdan.cc/gofumpt@latest` if you'd rather use `go install`).
 		opts = {
 			formatters_by_ft = {
 				typescript = { "prettierd" },
@@ -880,10 +1012,18 @@ require("lazy").setup({
 				-- Order matters: imports are fixed first, then formatted.
 				go = { "goimports", "gofumpt" },
 			},
-			format_on_save = {
-				timeout_ms = 2000,
-				lsp_format = "fallback",
-			},
+			format_on_save = function(bufnr)
+				-- sqls' formatter destroys PostgreSQL procedural blocks such as
+				-- DO $$ ... $$, so keep SQL completion/linting but never rewrite
+				-- SQL automatically. Other filetypes retain their LSP fallback.
+				if vim.bo[bufnr].filetype == "sql" then
+					return nil
+				end
+				return {
+					timeout_ms = 2000,
+					lsp_format = "fallback",
+				}
+			end,
 		},
 	},
 
@@ -897,15 +1037,55 @@ require("lazy").setup({
 	},
 
 	{
+		"WhoIsSethDaniel/mason-tool-installer.nvim",
+		event = "VeryLazy",
+		dependencies = { "williamboman/mason.nvim" },
+		opts = {
+			-- These are CLI tools rather than LSP servers, so mason-lspconfig
+			-- does not install them. Keep the formatter/linter setup reproducible.
+			ensure_installed = { "goimports", "gofumpt", "golangci-lint", "sqlfluff" },
+			run_on_start = true,
+		},
+	},
+
+	{
 		"williamboman/mason-lspconfig.nvim",
 		event = { "BufReadPre", "BufNewFile" },
-		dependencies = { "neovim/nvim-lspconfig" },
+		dependencies = { "williamboman/mason.nvim", "neovim/nvim-lspconfig", "saghen/blink.cmp" },
 		config = function()
 			local capabilities = require("blink.cmp").get_lsp_capabilities()
 
 			require("mason-lspconfig").setup({
-				ensure_installed = { "rust_analyzer", "gopls", "lua_ls", "ts_ls", "bashls", "dockerls", "marksman" },
+				ensure_installed = {
+					"rust_analyzer",
+					"gopls",
+					"sqls",
+					"lua_ls",
+					"ts_ls",
+					"bashls",
+					"dockerls",
+					"marksman",
+				},
+				-- Mason otherwise auto-enables *every* server installed on this
+				-- machine (including unrelated ones such as harper_ls and pyright).
+				-- Configure and enable only the servers below, so a stray server
+				-- cannot duplicate diagnostics or interfere with completion.
+				automatic_enable = false,
 			})
+
+			-- sqls can work without a live connection, but schema-aware
+			-- PostgreSQL completion needs one. Reuse DATABASE_URL when present
+			-- without committing credentials to this dotfile.
+			local sqls_settings = {}
+			if vim.env.DATABASE_URL and vim.env.DATABASE_URL ~= "" then
+				sqls_settings = {
+					sqls = {
+						connections = {
+							{ alias = "postgres", driver = "postgresql", dataSourceName = vim.env.DATABASE_URL },
+						},
+					},
+				}
+			end
 
 			local servers = {
 				lua_ls = { settings = { Lua = { diagnostics = { globals = { "vim" } } } } },
@@ -944,13 +1124,21 @@ require("lazy").setup({
 				-- inlay hints, and gofumpt-aware formatting so gopls agrees
 				-- with the conform.nvim formatters configured for Go.
 				gopls = {
+					root_markers = { "go.work", "go.mod", ".git" },
 					settings = {
 						gopls = {
 							gofumpt = true,
 							usePlaceholders = true,
 							completeUnimported = true,
+							completeFunctionCalls = true,
+							expandWorkspaceToModule = true,
+							symbolScope = "all",
 							staticcheck = true,
-							directoryFilters = { "-.git", "-node_modules" },
+							semanticTokens = true,
+							-- Parsing/type errors still appear immediately; this shortens the
+							-- pause before the more expensive package diagnostics appear.
+							diagnosticsDelay = "300ms",
+							directoryFilters = { "-.git", "-**/node_modules", "-**/vendor" },
 							analyses = {
 								unusedparams = true,
 								unusedwrite = true,
@@ -967,6 +1155,11 @@ require("lazy").setup({
 						},
 					},
 				},
+				sqls = {
+					filetypes = { "sql" },
+					root_markers = { ".sqllsrc.json", "go.work", "go.mod", ".git" },
+					settings = sqls_settings,
+				},
 				bashls = {},
 				dockerls = {},
 				marksman = {},
@@ -977,6 +1170,37 @@ require("lazy").setup({
 				vim.lsp.config(server, config)
 				vim.lsp.enable(server)
 			end
+		end,
+	},
+
+	{
+		"mfussenegger/nvim-lint",
+		event = { "BufReadPost", "BufNewFile" },
+		config = function()
+			local lint = require("lint")
+			lint.linters_by_ft = {
+				go = { "golangcilint" },
+				sql = { "sqlfluff" },
+			}
+
+			-- golangci-lint uses exit code 7 when package loading/typechecking
+			-- fails (common briefly while editing). gopls already publishes the
+			-- useful compiler diagnostic; keep parsing any linter JSON without
+			-- showing a redundant command-failed notification on every save.
+			lint.linters.golangcilint.ignore_exitcode = true
+
+			-- Make SQLFluff parse stdin as PostgreSQL even when a project does
+			-- not yet have its own .sqlfluff configuration file.
+			lint.linters.sqlfluff.args = { "lint", "--dialect=postgres", "--format=json", "-" }
+
+			vim.api.nvim_create_autocmd("BufWritePost", {
+				group = vim.api.nvim_create_augroup("LintOnSave", { clear = true }),
+				callback = function()
+					if vim.bo.buftype == "" then
+						lint.try_lint()
+					end
+				end,
+			})
 		end,
 	},
 
@@ -1024,6 +1248,20 @@ require("lazy").setup({
 -- ========================================================================== --
 
 vim.api.nvim_set_hl(0, "LspInlayHint", { fg = "#545464", bg = "NONE", italic = true })
+
+-- LSP logs are invaluable while debugging, but an unbounded log had grown to
+-- several gigabytes here. Retain the latest diagnostics only, without doing a
+-- costly full-file read when Neovim exits.
+vim.api.nvim_create_autocmd("VimLeave", {
+	group = vim.api.nvim_create_augroup("KeepRecentLspLog", { clear = true }),
+	callback = function()
+		local log_path = vim.lsp.log.get_filename()
+		local recent = vim.fn.systemlist({ "tail", "-n", "100", log_path })
+		if vim.v.shell_error == 0 then
+			vim.fn.writefile(recent, log_path)
+		end
+	end,
+})
 
 vim.api.nvim_create_autocmd("CursorHold", {
 	callback = function()
