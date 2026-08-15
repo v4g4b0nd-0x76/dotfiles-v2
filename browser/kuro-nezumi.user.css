@@ -1,0 +1,17 @@
+/* ==UserStyle==
+@name         Kuro Nezumi
+@description  Dark, high-contrast browsing with warm paper text and restrained red.
+@version      1.0.0
+==/UserStyle== */
+
+/*
+ * A safe global foundation for Stylus.
+ *
+ * Do NOT try to recolor every element on every site here: sites have their
+ * own component systems, and partial overrides produce mixed white/black
+ * cards (as seen on LinkedIn). Use Dark Reader's Dynamic mode for universal
+ * darkening; keep Stylus for targeted, site-specific adjustments only.
+ */
+@-moz-document url-prefix("http") {
+  :root { color-scheme: dark !important; }
+}

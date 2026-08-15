@@ -8,9 +8,9 @@ cursor-style = bar
 cursor-style-blink = false
 
 scrollback-limit = 10000000
-background-opacity = 0.95
+background-opacity = 0.97
 
-theme = Gruvbox Material Dark
+theme = /Users/vangabond/dotfiles/ghostty/kuro-nezumi.conf
 window-vsync = false
 background-blur = false
-font-thicken = true
+font-thicken = false

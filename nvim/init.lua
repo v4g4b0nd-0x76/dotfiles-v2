@@ -70,6 +70,16 @@ opt.autowrite = true
 opt.laststatus = 3 -- ONE global statusline at the very bottom (lualine uses this too)
 opt.fillchars = { vert = "│", eob = " " } -- cleaner vertical split separators
 
+-- Ghostty uses an extensionless `config` file, so Neovim cannot infer its
+-- syntax by filename alone. Treat it as a standard key/value config file to
+-- retain the Kuro Nezumi syntax colors when editing terminal settings.
+vim.filetype.add({
+	pattern = {
+		[".*/ghostty/config"] = "conf",
+		[".*/ghostty/config%.ghostty"] = "conf",
+	},
+})
+
 -- Keep diagnostics useful without turning the editor into a wall of noise.
 -- Deep LSP diagnostics are shown in the sign column and at the end of the
 -- affected line; the full message remains one keystroke away with `K`.
@@ -423,36 +433,10 @@ end
 -- ========================================================================== --
 -- 8. PLUGIN SPECS
 -- ========================================================================== --
+vim.cmd.colorscheme("kuro_nezumi")
+
 require("lazy").setup({
 	{ "j-hui/fidget.nvim", event = "VeryLazy", opts = {} },
-
-	{
-		"sainnhe/gruvbox-material",
-		lazy = false,
-		priority = 1000,
-		config = function()
-			vim.g.gruvbox_material_background = "hard"
-			vim.g.gruvbox_material_foreground = "material"
-			vim.g.gruvbox_material_enable_italic = 1
-			vim.g.gruvbox_material_disable_italic_comment = 0
-			vim.g.gruvbox_material_transparent_background = 2
-			vim.g.gruvbox_material_dim_inactive_windows = 1
-			vim.g.gruvbox_material_better_performance = 1 -- perf: skip a few cosmetic passes
-
-			vim.cmd.colorscheme("gruvbox-material")
-
-			local hl = vim.api.nvim_set_hl
-			hl(0, "Normal", { bg = "NONE" })
-			hl(0, "NormalFloat", { bg = "NONE" })
-			hl(0, "SignColumn", { bg = "NONE" })
-			hl(0, "EndOfBuffer", { bg = "NONE" })
-			hl(0, "@comment", { italic = false })
-			hl(0, "Comment", { italic = false })
-			hl(0, "@keyword", { bold = true })
-			hl(0, "@type", { bold = true })
-			hl(0, "@function", { bold = true })
-		end,
-	},
 
 	{
 		"romgrk/barbar.nvim",
