@@ -12,5 +12,5 @@ background-opacity = 0.97
 
 theme = /Users/vangabond/dotfiles/ghostty/kuro-nezumi.conf
 window-vsync = false
-background-blur = false
+background-blur = true
 font-thicken = false
