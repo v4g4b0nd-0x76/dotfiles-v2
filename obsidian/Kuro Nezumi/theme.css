@@ -1,0 +1,323 @@
+/* Kuro Nezumi — soot black, ash gray, worn paper, and signal red. */
+
+:root {
+  --kuro-bg: #080808;
+  --kuro-bg-alt: #101010;
+  --kuro-surface: #171717;
+  --kuro-surface-hi: #202020;
+  --kuro-border: #343434;
+  --kuro-paper: #d7d2c8;
+  --kuro-paper-soft: #9a948a;
+  --kuro-muted: #6f6a63;
+  --kuro-red: #b73535;
+  --kuro-red-bright: #d94a4a;
+  --kuro-selection: #2a1818;
+
+  --background-primary: var(--kuro-bg);
+  --background-primary-alt: var(--kuro-bg-alt);
+  --background-secondary: #0d0d0d;
+  --background-secondary-alt: var(--kuro-surface);
+  --background-modifier-border: var(--kuro-border);
+  --background-modifier-border-hover: #4a4641;
+  --background-modifier-border-focus: var(--kuro-red);
+  --background-modifier-hover: #181514;
+  --background-modifier-active-hover: #211717;
+  --background-modifier-form-field: #101010;
+  --background-modifier-form-field-highlighted: #151515;
+  --background-modifier-box-shadow: rgba(0, 0, 0, 0.45);
+  --background-modifier-success: #1a241c;
+  --background-modifier-error: #2a1818;
+  --background-modifier-error-hover: #391c1c;
+  --text-normal: var(--kuro-paper);
+  --text-muted: var(--kuro-muted);
+  --text-faint: #514d48;
+  --text-on-accent: #f0e8dc;
+  --text-on-accent-inverted: var(--kuro-bg);
+  --text-accent: var(--kuro-red-bright);
+  --text-accent-hover: #ed6565;
+  --interactive-normal: #171717;
+  --interactive-hover: #24201e;
+  --interactive-accent: var(--kuro-red);
+  --interactive-accent-hover: var(--kuro-red-bright);
+  --interactive-success: #8a8f73;
+  --interactive-accent-rgb: 183, 53, 53;
+  --accent-h: 0;
+  --accent-s: 55%;
+  --accent-l: 46%;
+  --color-accent: var(--kuro-red);
+  --color-accent-1: var(--kuro-red);
+  --color-accent-2: var(--kuro-red-bright);
+  --color-base-00: var(--kuro-bg);
+  --color-base-05: #0d0d0d;
+  --color-base-10: var(--kuro-bg-alt);
+  --color-base-20: var(--kuro-surface);
+  --color-base-25: var(--kuro-surface-hi);
+  --color-base-30: var(--kuro-border);
+  --color-base-35: #4a4641;
+  --color-base-40: var(--kuro-muted);
+  --color-base-50: var(--kuro-paper-soft);
+  --color-base-60: var(--kuro-paper);
+  --color-base-70: #e8e0d5;
+  --color-red-rgb: 183, 53, 53;
+  --color-red: var(--kuro-red-bright);
+  --color-orange: #c27b52;
+  --color-yellow: #b8a781;
+  --color-green: #8a8f73;
+  --color-cyan: #7f9693;
+  --color-blue: #8c9097;
+  --color-purple: #9a7f8f;
+  --color-pink: #b06c73;
+  --text-selection: var(--kuro-paper);
+  --text-highlight-bg: rgba(183, 53, 53, 0.28);
+  --text-highlight-bg-active: rgba(217, 74, 74, 0.38);
+  --code-background: #0b0b0b;
+  --code-normal: #d7d2c8;
+  --code-comment: var(--kuro-muted);
+  --code-function: #7f9693;
+  --code-important: #d94a4a;
+  --code-keyword: #d94a4a;
+  --code-property: #8c9097;
+  --code-punctuation: #9a948a;
+  --code-string: #b8a781;
+  --code-tag: #d94a4a;
+  --code-value: #b8a781;
+  --font-interface-theme: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  --font-text-theme: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  --font-monospace-theme: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+  --radius-s: 2px;
+  --radius-m: 3px;
+  --radius-l: 4px;
+}
+
+/* A quiet scanline grain: it is intentionally nearly invisible. */
+.workspace,
+.workspace-split.mod-root,
+.markdown-source-view.mod-cm6 .cm-scroller,
+.markdown-reading-view {
+  background-color: var(--kuro-bg);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(215, 210, 200, 0.012) 0,
+    rgba(215, 210, 200, 0.012) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+}
+
+.workspace-tab-header-container,
+.workspace-tab-header,
+.workspace-tab-header.is-active,
+.titlebar,
+.status-bar,
+.mod-left-split .workspace-tab-header-container,
+.mod-right-split .workspace-tab-header-container {
+  background: var(--kuro-bg-alt);
+}
+
+.workspace-tab-header {
+  border-radius: 0;
+  border-right: 1px solid #171717;
+}
+
+.workspace-tab-header.is-active {
+  box-shadow: inset 0 -2px 0 var(--kuro-red);
+}
+
+.workspace-tab-header-inner-title,
+.view-header-title {
+  color: var(--kuro-paper-soft);
+  font-size: 0.78em;
+  letter-spacing: 0.04em;
+}
+
+.nav-file-title,
+.nav-folder-title,
+.tree-item-self {
+  border-radius: 2px;
+}
+
+.nav-file-title.is-active,
+.tree-item-self.is-active {
+  color: var(--kuro-paper);
+  background: #211717;
+  box-shadow: inset 2px 0 0 var(--kuro-red);
+}
+
+.nav-file-title:hover,
+.nav-folder-title:hover,
+.tree-item-self:hover {
+  background: #181514;
+}
+
+.markdown-rendered h1,
+.markdown-rendered h2,
+.markdown-rendered h3,
+.markdown-rendered h4,
+.markdown-rendered h5,
+.markdown-rendered h6,
+.HyperMD-header {
+  color: #e8e0d5;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.markdown-rendered h1,
+.HyperMD-header-1 {
+  border-bottom: 1px solid var(--kuro-border);
+  padding-bottom: 0.35em;
+}
+
+.markdown-rendered h2,
+.HyperMD-header-2 {
+  color: var(--kuro-paper);
+}
+
+.markdown-rendered a,
+.cm-hmd-internal-link,
+.cm-link,
+.external-link {
+  color: #cf7979;
+  text-decoration-color: rgba(183, 53, 53, 0.5);
+}
+
+.markdown-rendered mark,
+mark,
+.cm-highlight {
+  color: var(--kuro-paper);
+  background: rgba(183, 53, 53, 0.32);
+  padding: 0.05em 0.18em;
+}
+
+.cm-selectionBackground,
+::selection {
+  background: var(--kuro-selection) !important;
+  color: var(--kuro-paper);
+}
+
+.markdown-rendered blockquote {
+  color: var(--kuro-paper-soft);
+  border-left: 2px solid var(--kuro-red);
+  background: linear-gradient(90deg, rgba(183, 53, 53, 0.09), transparent 58%);
+  padding: 0.2em 1em;
+}
+
+.markdown-rendered hr {
+  border-color: var(--kuro-border);
+}
+
+pre,
+code,
+.cm-inline-code,
+.markdown-rendered code {
+  color: var(--kuro-paper);
+  background: #0b0b0b;
+  border: 1px solid #1d1d1d;
+}
+
+.markdown-rendered pre {
+  padding: 1em 1.1em;
+  border-left: 2px solid #4a2222;
+  box-shadow: inset 0 1px 0 rgba(215, 210, 200, 0.035);
+}
+
+.cm-s-obsidian span.cm-comment,
+.cm-comment,
+.cm-formatting {
+  color: var(--kuro-muted);
+}
+
+.cm-s-obsidian span.cm-string,
+.cm-string {
+  color: #b8a781;
+}
+
+.cm-s-obsidian span.cm-keyword,
+.cm-s-obsidian span.cm-operator,
+.cm-keyword,
+.cm-operator {
+  color: var(--kuro-red-bright);
+}
+
+.cm-s-obsidian span.cm-def,
+.cm-s-obsidian span.cm-variable,
+.cm-variable {
+  color: #7f9693;
+}
+
+.cm-s-obsidian span.cm-number,
+.cm-number,
+.cm-atom {
+  color: #9a7f8f;
+}
+
+.callout {
+  border: 1px solid var(--kuro-border);
+  border-left: 2px solid rgb(var(--callout-color));
+  background: rgba(23, 23, 23, 0.62);
+  border-radius: 3px;
+}
+
+.callout-title {
+  color: var(--kuro-paper);
+}
+
+.search-result-file-matched-text,
+.suggestion-highlight,
+.is-flashing {
+  color: var(--kuro-paper);
+  background: rgba(183, 53, 53, 0.32);
+}
+
+.tag,
+a.tag {
+  color: #d9a0a0;
+  background: #211717;
+  border: 1px solid #573030;
+  border-radius: 2px;
+}
+
+button,
+.mod-cta {
+  border-radius: 2px;
+}
+
+button.mod-cta,
+.mod-cta {
+  color: #f0e8dc;
+  background: var(--kuro-red);
+}
+
+input,
+textarea,
+select,
+.search-input-container input {
+  color: var(--kuro-paper);
+  background: #0d0d0d;
+  border-color: var(--kuro-border);
+}
+
+.metadata-container,
+.frontmatter,
+.metadata-properties {
+  color: var(--kuro-paper-soft);
+  background: rgba(16, 16, 16, 0.7);
+  border-color: var(--kuro-border);
+}
+
+.canvas,
+.canvas-wrapper {
+  background-color: var(--kuro-bg);
+  background-image: radial-gradient(rgba(215, 210, 200, 0.055) 0.7px, transparent 0.7px);
+  background-size: 12px 12px;
+}
+
+.canvas-node,
+.canvas-node-container {
+  background: #101010;
+  border-color: var(--kuro-border);
+  border-radius: 3px;
+}
+
+.graph-view.color-fill {
+  color: var(--kuro-red);
+}
