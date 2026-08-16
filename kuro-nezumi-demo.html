@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kuro Nezumi — Dark Interface Study</title>
+  <style>
+    :root { --ink:#080808; --ink-2:#101010; --surface:#171717; --surface-hi:#202020; --line:#343434; --paper:#d7d2c8; --soft:#9a948a; --muted:#6f6a63; --red:#b73535; --red-hi:#d94a4a; --select:#2a1818; --green:#8a8f73; --yellow:#b8a781; --blue:#8c9097; --cyan:#7f9693; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--paper); background:var(--ink); font:14px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; letter-spacing:.01em; }
+    body:before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.08; background:repeating-linear-gradient(0deg,transparent 0 2px,#fff 3px 4px); mix-blend-mode:soft-light; }
+    .page { max-width:1280px; margin:auto; padding:42px 26px 80px; }
+    header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid var(--line); padding-bottom:28px; margin-bottom:28px; }
+    .eyebrow, .label { color:var(--red-hi); font-size:11px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; }
+    h1 { margin:5px 0 7px; font-size:clamp(32px,5vw,58px); line-height:1; letter-spacing:-.07em; font-weight:700; }
+    h1 span { color:var(--red); }
+    .intro { max-width:620px; color:var(--soft); margin:0; }
+    .stamp { color:var(--soft); border:1px solid var(--red); padding:8px 10px; font-size:11px; text-align:center; line-height:1.25; }
+    .stamp b { color:var(--paper); display:block; font-size:15px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    .panel { min-width:0; background:var(--surface); border:1px solid var(--line); box-shadow:8px 8px 0 #000; }
+    .panel-head { padding:10px 13px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; color:var(--soft); font-size:11px; text-transform:uppercase; letter-spacing:.1em; }
+    .dots { display:flex; gap:5px; } .dot { width:8px; height:8px; border:1px solid var(--muted); } .dot.red { background:var(--red); border-color:var(--red); }
+    .browser { grid-column:span 2; }
+    .browser-body { padding:14px; background:var(--ink-2); }
+    .tabs { display:flex; gap:6px; margin-bottom:10px; } .tab { padding:7px 11px; color:var(--muted); background:var(--surface); border:1px solid var(--line); font-size:12px; } .tab.active { color:var(--paper); background:var(--surface-hi); border-top:2px solid var(--red); }
+    .bar { display:flex; gap:9px; align-items:center; color:var(--muted); } .nav { color:var(--soft); font-size:17px; } .url { flex:1; padding:7px 10px; background:var(--surface); border:1px solid var(--line); color:var(--soft); font-size:12px; }
+    .site { margin-top:14px; padding:clamp(25px,5vw,62px); min-height:245px; border:1px solid #292929; background:radial-gradient(circle at 70% 10%,#261414 0,transparent 29%),var(--ink); }
+    .site h2 { font-size:clamp(24px,4vw,46px); line-height:1.05; margin:12px 0; max-width:660px; letter-spacing:-.06em; } .site p { color:var(--soft); max-width:620px; } .button { display:inline-block; margin-top:12px; color:var(--paper); background:var(--red); padding:9px 13px; font-weight:bold; font-size:12px; }
+    pre { margin:0; padding:16px; overflow:auto; color:var(--paper); background:var(--ink-2); font-size:12px; line-height:1.7; } .dim { color:var(--muted); } .key { color:var(--red-hi); } .str { color:var(--yellow); } .fn { color:var(--cyan); } .ok { color:var(--green); }
+    .terminal pre { min-height:244px; } .prompt { color:var(--red-hi); } .cursor { display:inline-block; width:7px; height:14px; vertical-align:-2px; background:var(--paper); }
+    .editor { grid-column:span 2; } .editor-wrap { display:grid; grid-template-columns:46px 1fr; background:var(--ink-2); } .nums { padding:16px 8px; text-align:right; color:#4a4641; user-select:none; border-right:1px solid #202020; line-height:1.7; font-size:12px; } .code { position:relative; } .current { background:var(--select); outline:1px solid #3d2222; } .status { display:flex; justify-content:space-between; padding:5px 11px; color:var(--paper); background:var(--red); font-size:11px; }
+    .palette { grid-column:span 2; display:grid; grid-template-columns:repeat(9,1fr); gap:8px; padding:14px; background:var(--ink-2); } .chip { min-height:75px; padding:8px; display:flex; flex-direction:column; justify-content:flex-end; border:1px solid var(--line); font-size:10px; } .chip b { margin-bottom:1px; } .chip em { font-style:normal; opacity:.7; }
+    footer { margin-top:32px; color:var(--muted); font-size:11px; display:flex; justify-content:space-between; border-top:1px solid var(--line); padding-top:14px; }
+    @media (max-width:720px) { header { gap:16px; } .stamp { display:none; } .grid { grid-template-columns:1fr; } .browser,.editor,.palette { grid-column:span 1; } .palette { grid-template-columns:repeat(3,1fr); } }
+  </style>
+</head>
+<body><main class="page">
+  <header><div><div class="eyebrow">Theme specimen · 東京 / 1986</div><h1>Kuro <span>Nezumi</span></h1><p class="intro">A dark interface study in soot-black, ash gray, worn paper, and signal red. High contrast for long sessions; red is reserved for the things that should interrupt you.</p></div><div class="stamp"><b>黒 鼠</b>KURO NEZUMI<br>v0.1 / NIGHT SHIFT</div></header>
+  <section class="grid">
+    <article class="panel browser"><div class="panel-head"><span>01 · Browser / reading surface</span><div class="dots"><i class="dot red"></i><i class="dot"></i><i class="dot"></i></div></div><div class="browser-body"><div class="tabs"><div class="tab active">notes — kuro nezumi</div><div class="tab">network status</div><div class="tab">＋</div></div><div class="bar"><span class="nav">‹ ›</span><div class="url">◉  local.ash/archive/low-light-interfaces</div><span>⌁</span></div><div class="site"><div class="label">Field note 04</div><h2>The night does not need to be bright to be legible.</h2><p>Warm off-white keeps the page human. Dense blacks establish depth. A narrow band of red marks the decision, the error, the moment that matters.</p><span class="button">READ THE NOTE →</span></div></div></article>
+    <article class="panel terminal"><div class="panel-head"><span>02 · Terminal / focused work</span><span>zsh — 80×24</span></div><pre><span class="dim">Last login: Fri Aug 15 01:24:08</span>
+<span class="prompt">nezumi@station</span>:<span class="blue">~/projects/atlas</span> $ git status
+On branch <span class="str">night-mode</span>
+Changes not staged for commit:
+  <span class="key">modified:</span>   theme/kuro.lua
+
+<span class="prompt">nezumi@station</span>:<span class="blue">~/projects/atlas</span> $ nvim theme/kuro.lua
+<span class="prompt">nezumi@station</span>:<span class="blue">~/projects/atlas</span> $ <span class="ok">✓ build passed</span>
+<span class="prompt">nezumi@station</span>:<span class="blue">~/projects/atlas</span> $ <span class="cursor"></span></pre></article>
+    <article class="panel"><div class="panel-head"><span>03 · Usage / quiet hierarchy</span><span>tokens</span></div><pre><span class="key">NORMAL TEXT</span>   #D7D2C8  warm, passive paper
+<span class="dim">COMMENTS</span>      #6F6A63  recede without vanishing
+<span class="str">STRINGS</span>       #B8A781  faded brass / data
+<span class="fn">FUNCTIONS</span>     #7F9693  oxidized glass
+<span class="ok">SUCCESS</span>       #8A8F73  dry moss confirmation
+<span class="key">ATTENTION</span>    #D94A4A  errors, active state, action
+
+<span class="dim">RULE:</span> Red is a signal, not decoration.</pre></article>
+    <article class="panel editor"><div class="panel-head"><span>04 · Neovim / code surface</span><span>lua · utf-8</span></div><div class="editor-wrap"><div class="nums">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9</div><div class="code"><pre><span class="dim">-- colors/kuro_nezumi.lua</span>
+<span class="key">local</span> palette = {
+  bg = <span class="str">"#080808"</span>,
+  fg = <span class="str">"#D7D2C8"</span>,
+  accent = <span class="str">"#B73535"</span>,
+}
+
+<span class="current"><span class="key">vim</span>.api.<span class="fn">nvim_set_hl</span>(0, <span class="str">"Error"</span>, { fg = palette.accent })</span>
+<span class="fn">return</span> palette</pre></div></div><div class="status"><span>NORMAL</span><span>kuro_nezumi.lua  [+]</span><span>8:1  UTF-8</span></div></article>
+    <article class="panel palette"><div class="chip" style="background:#080808"><b>INK</b><em>#080808</em></div><div class="chip" style="background:#101010"><b>INK ALT</b><em>#101010</em></div><div class="chip" style="background:#171717"><b>SURFACE</b><em>#171717</em></div><div class="chip" style="background:#202020"><b>RAISED</b><em>#202020</em></div><div class="chip" style="background:#343434"><b>BORDER</b><em>#343434</em></div><div class="chip" style="background:#d7d2c8;color:#171717"><b>PAPER</b><em>#D7D2C8</em></div><div class="chip" style="background:#b73535"><b>SIGNAL RED</b><em>#B73535</em></div><div class="chip" style="background:#d94a4a"><b>ALERT RED</b><em>#D94A4A</em></div><div class="chip" style="background:#2a1818"><b>SELECTION</b><em>#2A1818</em></div></article>
+  </section><footer><span>KURO NEZUMI / BLACK MOUSE</span><span>FOR NEOVIM · TERMINAL · BROWSER</span></footer>
+</main></body></html>
