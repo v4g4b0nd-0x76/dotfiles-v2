@@ -1,0 +1,67 @@
+/* Kuro Nezumi — global Calibre E-book Viewer stylesheet. */
+
+:root {
+  color-scheme: dark;
+  --kuro-bg: #080808;
+  --kuro-surface: #101010;
+  --kuro-paper: #d7d2c8;
+  --kuro-soft: #9a948a;
+  --kuro-muted: #6f6a63;
+  --kuro-red: #b73535;
+  --kuro-red-bright: #d94a4a;
+}
+
+html,
+body {
+  color: var(--kuro-paper) !important;
+  background-color: var(--kuro-bg) !important;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(215, 210, 200, 0.012) 0,
+    rgba(215, 210, 200, 0.012) 1px,
+    transparent 1px,
+    transparent 4px
+  ) !important;
+  font-family: "Iowan Old Style", "Baskerville", Georgia, serif !important;
+  line-height: 1.75 !important;
+}
+
+p,
+li,
+blockquote {
+  color: var(--kuro-paper) !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: #e8e0d5 !important;
+  border-color: #343434 !important;
+}
+
+a,
+a:visited {
+  color: #d97171 !important;
+}
+
+blockquote {
+  color: var(--kuro-soft) !important;
+  border-left: 2px solid var(--kuro-red) !important;
+  background: linear-gradient(90deg, rgba(183, 53, 53, 0.1), transparent 65%) !important;
+  padding: 0.25em 1em !important;
+}
+
+pre,
+code {
+  color: var(--kuro-paper) !important;
+  background: #0b0b0b !important;
+  border-color: #242424 !important;
+}
+
+::selection {
+  color: var(--kuro-paper) !important;
+  background: #2a1818 !important;
+}
