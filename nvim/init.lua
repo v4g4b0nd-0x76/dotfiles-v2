@@ -374,6 +374,25 @@ local function lsp_on_attach(client, bufnr)
 		ts_builtin.lsp_definitions({ jump_type = "split" })
 	end, { buffer = bufnr, desc = "LSP Definition (Horizontal Split)" })
 	vim.keymap.set("n", "gD", vim.lsp.buf.declaration, opts)
+	local gs = require("gitsigns")
+
+	vim.keymap.set("n", "<leader>gh", function()
+		gs.setqflist("all")
+		vim.cmd("copen")
+	end, { desc = "Git Changed Lines in Current File" })
+
+	vim.keymap.set("n", "<leader>gp", function()
+		gs.preview_hunk()
+	end, { desc = "Preview Current Git Hunk" })
+
+	vim.keymap.set("n", "<leader>gd", function()
+		gs.diffthis()
+	end, { desc = "Diff Current File Against Index" })
+
+	vim.keymap.set("n", "<leader>gD", function()
+		gs.diffthis("~")
+	end, { desc = "Diff Current File Against HEAD" })
+
 	vim.keymap.set("n", "[d", vim.diagnostic.goto_prev, { buffer = bufnr, desc = "Previous Diagnostic" })
 	vim.keymap.set("n", "]d", vim.diagnostic.goto_next, { buffer = bufnr, desc = "Next Diagnostic" })
 	vim.keymap.set("n", "<leader>ld", vim.diagnostic.setloclist, { buffer = bufnr, desc = "Buffer Diagnostics List" })
@@ -416,18 +435,33 @@ local function lsp_on_attach(client, bufnr)
 	-- buffer, not a terminal/help/nofile buffer) so it's never fired
 	-- somewhere it can't do anything useful.
 	vim.keymap.set("n", "<leader>lR", function()
-		if vim.bo[bufnr].filetype ~= "rust" or vim.bo[bufnr].buftype ~= "" then
-			vim.notify("LSP restart is only available for Rust files", vim.log.levels.WARN)
+		if vim.bo[bufnr].buftype ~= "" then
+			vim.notify("LSP restart is only available for normal file buffers", vim.log.levels.WARN)
 			return
 		end
-		vim.diagnostic.reset(nil, bufnr)
-		vim.cmd("LspRestart")
-		vim.notify("LSP restarted for this buffer", vim.log.levels.INFO)
-	end, { buffer = bufnr, desc = "Restart LSP (Rust only)" })
 
-	if client:supports_method("textDocument/inlayHint") then
-		vim.lsp.inlay_hint.enable(false, { bufnr = bufnr })
-	end
+		local clients = vim.lsp.get_clients({ bufnr = bufnr })
+		if #clients == 0 then
+			vim.notify("No LSP client attached to this buffer", vim.log.levels.WARN)
+			return
+		end
+
+		local names = {}
+		for _, client in ipairs(clients) do
+			if client.name ~= "copilot" and client.name ~= "null-ls" then
+				table.insert(names, client.name)
+			end
+		end
+
+		if #names == 0 then
+			vim.notify("No restartable LSP client attached to this buffer", vim.log.levels.WARN)
+			return
+		end
+
+		vim.diagnostic.reset(nil, bufnr)
+		vim.cmd("LspRestart " .. table.concat(names, " "))
+		vim.notify("Restarted LSP: " .. table.concat(names, ", "), vim.log.levels.INFO)
+	end, { buffer = bufnr, desc = "Restart LSP for Current File" })
 end
 
 -- ========================================================================== --
@@ -897,7 +931,12 @@ require("lazy").setup({
 				},
 				respect_buf_cwd = true,
 				sync_root_with_cwd = true,
-				view = { width = 36, preserve_window_proportions = true, centralize_selection = true, cursorline = true },
+				view = {
+					width = 36,
+					preserve_window_proportions = true,
+					centralize_selection = true,
+					cursorline = true,
+				},
 				filters = { dotfiles = false, git_ignored = false },
 				on_attach = function(bufnr)
 					local api = require("nvim-tree.api")
@@ -971,6 +1010,8 @@ require("lazy").setup({
 				{ "<leader>wl", "<cmd>BufferPin<CR>", desc = "Pin Buffer" },
 				{ "<leader>wc", "<cmd>wq!<CR>", desc = "Write and Quit" },
 				{ "<leader>gh", desc = "File History Log (Split)" },
+				{ "<leader>gdf", desc = "Current File Diff Right Split" },
+				{ "<leader>gdl", mode = "v", desc = "Selected Lines Git History" },
 			})
 		end,
 	},
@@ -1462,3 +1503,11 @@ end
 vim.keymap.set("n", "<leader>ps", project_save, { desc = "Save Project" })
 vim.keymap.set("n", "<leader>pd", project_delete, { desc = "Delete Project" })
 vim.keymap.set("n", "<leader>pl", project_list, { desc = "List Projects" })
+vim.keymap.set("n", "<leader>gdf", function()
+	pcall(vim.cmd, "NvimTreeClose")
+	vim.cmd("DiffviewOpen -- %")
+end, { desc = "Current File Diff Right Split" })
+
+vim.keymap.set("v", "<leader>gdl", "<Esc><Cmd>'<,'>DiffviewFileHistory %<CR>", {
+	desc = "Selected Lines Git History",
+})
