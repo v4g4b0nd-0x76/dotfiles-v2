@@ -735,7 +735,10 @@ require("lazy").setup({
 			keymaps = { close = { n = "q" } },
 		},
 	},
-
+	{
+		"christoomey/vim-tmux-navigator",
+		lazy = false,
+	},
 	{
 		"folke/trouble.nvim",
 		cmd = "Trouble",
