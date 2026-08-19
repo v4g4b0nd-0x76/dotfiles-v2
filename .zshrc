@@ -1,8 +1,14 @@
 export ZSH="$HOME/.oh-my-zsh"
 
+# Make Rust available before the Oh My Zsh Rust completion module loads.
+[ -r "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 
 plugins=(
   git
+  docker
+  docker-compose
+  golang
+  rust
   zsh-autosuggestions
   zsh-syntax-highlighting
 )
@@ -33,7 +39,7 @@ esac
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-. "$HOME/.cargo/env"
 export PATH="$PATH:/usr/local/bin/nvim/bin"
 export PATH=$PATH:/usr/local/go/bin
 export GOROOT=$HOME/go
+[ -r "$HOME/dotfiles/zsh/kuro-nezumi-completions.zsh" ] && source "$HOME/dotfiles/zsh/kuro-nezumi-completions.zsh"
