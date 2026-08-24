@@ -11,6 +11,9 @@ scrollback-limit = 10000000
 background-opacity = 0.97
 
 theme = /Users/vangabond/dotfiles/ghostty/kuro-nezumi.conf
+# Native Ghostty Dock/app-switcher icon. Do not use Finder custom-icon metadata.
+macos-icon = custom
+macos-custom-icon = /Users/vangabond/dotfiles/icons/kuro-nezumi/ghostty-ronin.png
 window-vsync = false
 background-blur = true
 font-thicken = false
