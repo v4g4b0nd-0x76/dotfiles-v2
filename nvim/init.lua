@@ -146,6 +146,154 @@ opt.winbar = "%{%v:lua.SimpleWinbar()%}"
 -- ========================================================================== --
 -- 4. GLOBAL KEYMAPS
 -- ========================================================================== --
+
+-- Function/method boundary navigation.
+-- Vim's built-in ][ / [] motions are brace/section based, so methods nested
+-- inside a JavaScript/TypeScript class or Rust impl can resolve to the outer
+-- class/impl boundary. Resolve the smallest enclosing callable syntax node
+-- instead.
+local function node_type_set(...)
+	local set = {}
+	for _, node_type in ipairs({ ... }) do
+		set[node_type] = true
+	end
+	return set
+end
+
+local function_nodes_by_filetype = {
+	rust = node_type_set("function_item", "closure_expression"),
+	javascript = node_type_set(
+		"function_declaration",
+		"function_expression",
+		"generator_function_declaration",
+		"generator_function",
+		"arrow_function",
+		"method_definition"
+	),
+	javascriptreact = node_type_set(
+		"function_declaration",
+		"function_expression",
+		"generator_function_declaration",
+		"generator_function",
+		"arrow_function",
+		"method_definition"
+	),
+	typescript = node_type_set(
+		"function_declaration",
+		"function_expression",
+		"generator_function_declaration",
+		"generator_function",
+		"arrow_function",
+		"method_definition"
+	),
+	typescriptreact = node_type_set(
+		"function_declaration",
+		"function_expression",
+		"generator_function_declaration",
+		"generator_function",
+		"arrow_function",
+		"method_definition"
+	),
+	go = node_type_set("function_declaration", "method_declaration", "func_literal"),
+	lua = node_type_set("function_declaration", "function_definition"),
+	c = node_type_set("function_definition"),
+	cpp = node_type_set("function_definition", "lambda_expression"),
+	python = node_type_set("function_definition", "lambda"),
+	sh = node_type_set("function_definition"),
+	bash = node_type_set("function_definition"),
+	java = node_type_set("method_declaration", "constructor_declaration", "lambda_expression"),
+	c_sharp = node_type_set(
+		"method_declaration",
+		"constructor_declaration",
+		"local_function_statement",
+		"anonymous_method_expression",
+		"lambda_expression"
+	),
+}
+
+local generic_function_nodes = node_type_set(
+	"function_item",
+	"function_declaration",
+	"function_definition",
+	"function_expression",
+	"generator_function_declaration",
+	"generator_function",
+	"arrow_function",
+	"method_definition",
+	"method_declaration",
+	"constructor_declaration",
+	"func_literal",
+	"closure_expression",
+	"lambda_expression",
+	"lambda",
+	"local_function_statement",
+	"anonymous_method_expression"
+)
+
+local function enclosing_function_node()
+	local ok, node = pcall(vim.treesitter.get_node, { bufnr = 0 })
+	if not ok or not node then
+		return nil
+	end
+
+	local filetype_nodes = function_nodes_by_filetype[vim.bo.filetype]
+	while node do
+		local node_type = node:type()
+		if (filetype_nodes and filetype_nodes[node_type]) or generic_function_nodes[node_type] then
+			return node
+		end
+		node = node:parent()
+	end
+
+	return nil
+end
+
+local function last_nonblank_position_in_node(node)
+	local start_row, _, end_row, end_col = node:range()
+	local row = end_row
+	local col_limit = end_col
+
+	while row >= start_row do
+		local line = vim.api.nvim_buf_get_lines(0, row, row + 1, false)[1] or ""
+		local limit = math.min(col_limit, #line)
+		local prefix = line:sub(1, limit)
+		local byte_index = prefix:find("%S%s*$")
+		if byte_index then
+			return row, byte_index - 1
+		end
+		row = row - 1
+		col_limit = math.huge
+	end
+
+	local row0, col0 = node:start()
+	return row0, col0
+end
+
+local function jump_current_function(to_end)
+	local node = enclosing_function_node()
+	if not node then
+		vim.notify("Cursor is not inside a recognized function or method", vim.log.levels.WARN)
+		return
+	end
+
+	local row, col
+	if to_end then
+		row, col = last_nonblank_position_in_node(node)
+	else
+		row, col = node:start()
+	end
+
+	vim.api.nvim_win_set_cursor(0, { row + 1, col })
+	vim.cmd("normal! zv")
+end
+
+vim.keymap.set("n", "][", function()
+	jump_current_function(true)
+end, { desc = "End of Current Function/Method" })
+
+vim.keymap.set("n", "[]", function()
+	jump_current_function(false)
+end, { desc = "Start of Current Function/Method" })
 vim.keymap.set("n", "|", function()
 	require("telescope.builtin").find_files({
 		attach_mappings = function(prompt_bufnr, map)
