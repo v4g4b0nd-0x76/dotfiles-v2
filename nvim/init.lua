@@ -148,152 +148,226 @@ opt.winbar = "%{%v:lua.SimpleWinbar()%}"
 -- ========================================================================== --
 
 -- Function/method boundary navigation.
--- Vim's built-in ][ / [] motions are brace/section based, so methods nested
--- inside a JavaScript/TypeScript class or Rust impl can resolve to the outer
--- class/impl boundary. Resolve the smallest enclosing callable syntax node
--- instead.
-local function node_type_set(...)
-	local set = {}
-	for _, node_type in ipairs({ ... }) do
-		set[node_type] = true
-	end
-	return set
-end
-
-local function_nodes_by_filetype = {
-	rust = node_type_set("function_item", "closure_expression"),
-	javascript = node_type_set(
-		"function_declaration",
-		"function_expression",
-		"generator_function_declaration",
-		"generator_function",
-		"arrow_function",
-		"method_definition"
-	),
-	javascriptreact = node_type_set(
-		"function_declaration",
-		"function_expression",
-		"generator_function_declaration",
-		"generator_function",
-		"arrow_function",
-		"method_definition"
-	),
-	typescript = node_type_set(
-		"function_declaration",
-		"function_expression",
-		"generator_function_declaration",
-		"generator_function",
-		"arrow_function",
-		"method_definition"
-	),
-	typescriptreact = node_type_set(
-		"function_declaration",
-		"function_expression",
-		"generator_function_declaration",
-		"generator_function",
-		"arrow_function",
-		"method_definition"
-	),
-	go = node_type_set("function_declaration", "method_declaration", "func_literal"),
-	lua = node_type_set("function_declaration", "function_definition"),
-	c = node_type_set("function_definition"),
-	cpp = node_type_set("function_definition", "lambda_expression"),
-	python = node_type_set("function_definition", "lambda"),
-	sh = node_type_set("function_definition"),
-	bash = node_type_set("function_definition"),
-	java = node_type_set("method_declaration", "constructor_declaration", "lambda_expression"),
-	c_sharp = node_type_set(
-		"method_declaration",
-		"constructor_declaration",
-		"local_function_statement",
-		"anonymous_method_expression",
-		"lambda_expression"
-	),
+-- ][ moves to the end of the smallest enclosing function/method.
+-- [] moves to its start. Works in normal and visual modes.
+local callable_symbol_kinds = {
+	[vim.lsp.protocol.SymbolKind.Function] = true,
+	[vim.lsp.protocol.SymbolKind.Method] = true,
+	[vim.lsp.protocol.SymbolKind.Constructor] = true,
 }
 
-local generic_function_nodes = node_type_set(
-	"function_item",
-	"function_declaration",
-	"function_definition",
-	"function_expression",
-	"generator_function_declaration",
-	"generator_function",
-	"arrow_function",
-	"method_definition",
-	"method_declaration",
-	"constructor_declaration",
-	"func_literal",
-	"closure_expression",
-	"lambda_expression",
-	"lambda",
-	"local_function_statement",
-	"anonymous_method_expression"
-)
+local callable_ts_nodes = {
+	function_item = true,
+	function_declaration = true,
+	function_definition = true,
+	function_expression = true,
+	generator_function_declaration = true,
+	generator_function = true,
+	arrow_function = true,
+	method_definition = true,
+	method_declaration = true,
+	constructor_declaration = true,
+	closure_expression = true,
+	func_literal = true,
+	lambda_expression = true,
+	lambda = true,
+	local_function_statement = true,
+	anonymous_method_expression = true,
+}
 
-local function enclosing_function_node()
-	local ok, node = pcall(vim.treesitter.get_node, { bufnr = 0 })
-	if not ok or not node then
-		return nil
-	end
-
-	local filetype_nodes = function_nodes_by_filetype[vim.bo.filetype]
-	while node do
-		local node_type = node:type()
-		if (filetype_nodes and filetype_nodes[node_type]) or generic_function_nodes[node_type] then
-			return node
-		end
-		node = node:parent()
-	end
-
-	return nil
+local function first_nonblank_position(row, fallback_col)
+	local line = vim.api.nvim_buf_get_lines(0, row, row + 1, false)[1] or ""
+	local first = line:find("%S")
+	return row, first and first - 1 or fallback_col or 0
 end
 
-local function last_nonblank_position_in_node(node)
-	local start_row, _, end_row, end_col = node:range()
+local function last_nonblank_position(start_row, end_row, end_col)
 	local row = end_row
-	local col_limit = end_col
 
 	while row >= start_row do
 		local line = vim.api.nvim_buf_get_lines(0, row, row + 1, false)[1] or ""
-		local limit = math.min(col_limit, #line)
-		local prefix = line:sub(1, limit)
-		local byte_index = prefix:find("%S%s*$")
-		if byte_index then
-			return row, byte_index - 1
+		local limit = #line
+
+		if row == end_row then
+			limit = math.min(end_col, #line)
 		end
+
+		for col = limit, 1, -1 do
+			if not line:sub(col, col):match("%s") then
+				return row, col - 1
+			end
+		end
+
 		row = row - 1
-		col_limit = math.huge
 	end
 
-	local row0, col0 = node:start()
-	return row0, col0
+	return start_row, 0
+end
+
+local function range_contains_cursor_line(range, cursor_row)
+	return range.start.line <= cursor_row and cursor_row <= range["end"].line
+end
+
+local function range_span(range)
+	return (range["end"].line - range.start.line) * 1000000
+		+ math.max(range["end"].character - range.start.character, 0)
+end
+
+local function enclosing_lsp_callable()
+	local bufnr = vim.api.nvim_get_current_buf()
+	local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
+	local clients = vim.lsp.get_clients({ bufnr = bufnr })
+
+	if #clients == 0 then
+		return nil
+	end
+
+	local supports_document_symbols = false
+	for _, client in ipairs(clients) do
+		if client:supports_method("textDocument/documentSymbol") then
+			supports_document_symbols = true
+			break
+		end
+	end
+
+	if not supports_document_symbols then
+		return nil
+	end
+
+	local responses = vim.lsp.buf_request_sync(bufnr, "textDocument/documentSymbol", {
+		textDocument = vim.lsp.util.make_text_document_params(),
+	}, 1000)
+
+	if not responses then
+		return nil
+	end
+
+	local best_range
+	local best_span
+
+	local function visit(symbol)
+		local range = symbol.range or (symbol.location and symbol.location.range)
+
+		if range and callable_symbol_kinds[symbol.kind] and range_contains_cursor_line(range, cursor_row) then
+			local span = range_span(range)
+
+			if not best_span or span < best_span then
+				best_range = range
+				best_span = span
+			end
+		end
+
+		for _, child in ipairs(symbol.children or {}) do
+			visit(child)
+		end
+	end
+
+	for _, response in pairs(responses) do
+		if response.result then
+			for _, symbol in ipairs(response.result) do
+				visit(symbol)
+			end
+		end
+	end
+
+	return best_range
+end
+
+local function node_contains_cursor_line(node, cursor_row)
+	local start_row, _, end_row, _ = node:range()
+	return start_row <= cursor_row and cursor_row <= end_row
+end
+
+local function node_span(node)
+	local start_row, start_col, end_row, end_col = node:range()
+	return (end_row - start_row) * 1000000 + math.max(end_col - start_col, 0)
+end
+
+local function enclosing_treesitter_callable()
+	local bufnr = vim.api.nvim_get_current_buf()
+	local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
+
+	local ok, parser = pcall(vim.treesitter.get_parser, bufnr)
+	if not ok or not parser then
+		return nil
+	end
+
+	local ok_parse, trees = pcall(parser.parse, parser)
+	if not ok_parse or not trees or not trees[1] then
+		return nil
+	end
+
+	local root = trees[1]:root()
+	local best_node
+	local best_span
+
+	local function visit(node)
+		if not node_contains_cursor_line(node, cursor_row) then
+			return
+		end
+
+		if callable_ts_nodes[node:type()] then
+			local span = node_span(node)
+			if not best_span or span < best_span then
+				best_node = node
+				best_span = span
+			end
+		end
+
+		for child in node:iter_children() do
+			visit(child)
+		end
+	end
+
+	visit(root)
+	return best_node
+end
+
+local function current_callable_bounds()
+	local range = enclosing_lsp_callable()
+
+	if range then
+		local start_row, start_col = first_nonblank_position(range.start.line, range.start.character)
+		local end_row, end_col = last_nonblank_position(range.start.line, range["end"].line, range["end"].character)
+
+		return start_row, start_col, end_row, end_col
+	end
+
+	local node = enclosing_treesitter_callable()
+	if not node then
+		return nil
+	end
+
+	local start_row, start_col, end_row, end_col = node:range()
+	start_row, start_col = first_nonblank_position(start_row, start_col)
+	end_row, end_col = last_nonblank_position(start_row, end_row, end_col)
+
+	return start_row, start_col, end_row, end_col
 end
 
 local function jump_current_function(to_end)
-	local node = enclosing_function_node()
-	if not node then
+	local start_row, start_col, end_row, end_col = current_callable_bounds()
+
+	if start_row == nil then
 		vim.notify("Cursor is not inside a recognized function or method", vim.log.levels.WARN)
 		return
 	end
 
-	local row, col
 	if to_end then
-		row, col = last_nonblank_position_in_node(node)
+		vim.api.nvim_win_set_cursor(0, { end_row + 1, end_col })
 	else
-		row, col = node:start()
+		vim.api.nvim_win_set_cursor(0, { start_row + 1, start_col })
 	end
-
-	vim.api.nvim_win_set_cursor(0, { row + 1, col })
-	vim.cmd("normal! zv")
 end
 
-vim.keymap.set("n", "][", function()
+vim.keymap.set({ "n", "x" }, "][", function()
 	jump_current_function(true)
-end, { desc = "End of Current Function/Method" })
+end, { silent = true, desc = "End of Current Function/Method" })
 
-vim.keymap.set("n", "[]", function()
+vim.keymap.set({ "n", "x" }, "[]", function()
 	jump_current_function(false)
-end, { desc = "Start of Current Function/Method" })
+end, { silent = true, desc = "Start of Current Function/Method" })
+
 vim.keymap.set("n", "|", function()
 	require("telescope.builtin").find_files({
 		attach_mappings = function(prompt_bufnr, map)
