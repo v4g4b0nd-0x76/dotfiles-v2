@@ -30,6 +30,7 @@ DISABLE_LS_COLORS="true"
 
 
 source $ZSH/oh-my-zsh.sh
+bindkey -v
 
 export LANG=en_US.UTF-8
 
