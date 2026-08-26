@@ -445,6 +445,46 @@ vim.api.nvim_create_user_command("GlowPreview", glow_preview, { desc = "Preview 
 vim.keymap.set("n", "<leader>mp", "<cmd>GlowPreview<CR>", { desc = "Preview Markdown with Glow" })
 vim.keymap.set("n", "<leader>mt", "<cmd>RenderMarkdown toggle<CR>", { desc = "Open Terminal-Native Markdown toggle" })
 
+local function image_preview(filename)
+	local viewers = {
+		{ "chafa", filename },
+		{ "viu", filename },
+		{ "catimg", filename },
+	}
+
+	vim.bo.bufhidden = "wipe"
+	vim.bo.swapfile = false
+	vim.bo.modified = false
+
+	for _, cmd in ipairs(viewers) do
+		if vim.fn.executable(cmd[1]) == 1 then
+			vim.fn.termopen(cmd)
+			vim.bo.filetype = "image"
+			vim.keymap.set("n", "q", "<cmd>bd!<CR>", { buffer = true, silent = true, desc = "Close Image Preview" })
+			return
+		end
+	end
+
+	if vim.fn.has("mac") == 1 and vim.fn.executable("qlmanage") == 1 then
+		vim.fn.jobstart({ "qlmanage", "-p", filename }, { detach = true })
+		vim.api.nvim_buf_set_lines(0, 0, -1, false, { "Opened image preview with qlmanage.", "", filename })
+	else
+		vim.api.nvim_buf_set_lines(0, 0, -1, false, { "Install chafa, viu, or catimg to preview images in Neovim.", "", filename })
+	end
+
+	vim.bo.buftype = "nofile"
+	vim.bo.filetype = "image"
+	vim.bo.modified = false
+	vim.keymap.set("n", "q", "<cmd>bd!<CR>", { buffer = true, silent = true, desc = "Close Image Preview" })
+end
+
+vim.api.nvim_create_autocmd("BufReadCmd", {
+	pattern = { "*.jpg", "*.jpeg", "*.png", "*.svg", "*.JPG", "*.JPEG", "*.PNG", "*.SVG" },
+	callback = function(args)
+		image_preview(vim.fn.fnamemodify(args.file, ":p"))
+	end,
+})
+
 -- Trouble can be closed from its own `q` mapping as well as from the leader
 -- mappings below.  Always restore focus after *any* close, rather than trying
 -- to infer panel state from its buffer. This avoids the occasional state where
