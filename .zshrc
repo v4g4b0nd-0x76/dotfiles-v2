@@ -3,6 +3,18 @@ export ZSH="$HOME/.oh-my-zsh"
 # Make Rust available before the Oh My Zsh Rust completion module loads.
 [ -r "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 
+export GOPATH="$HOME/go"
+typeset -U path PATH
+path=(
+  /opt/homebrew/bin
+  /opt/homebrew/sbin
+  "$HOME/.local/bin"
+  "$HOME/dotfiles/bin"
+  "$GOPATH/bin"
+  $path
+  /usr/local/go/bin
+)
+
 plugins=(
   git
   docker
@@ -40,7 +52,4 @@ esac
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-export PATH="$PATH:/usr/local/bin/nvim/bin"
-export PATH=$PATH:/usr/local/go/bin
-export GOROOT=$HOME/go
 [ -r "$HOME/dotfiles/zsh/kuro-nezumi-completions.zsh" ] && source "$HOME/dotfiles/zsh/kuro-nezumi-completions.zsh"
