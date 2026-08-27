@@ -1,0 +1,54 @@
+# Kuro Nezumi: small, Hyprland-like AeroSpace profile.
+config-version = 2
+start-at-login = true
+automatically-unhide-macos-hidden-apps = true
+default-root-container-layout = 'tiles'
+default-root-container-orientation = 'auto'
+
+[gaps]
+inner.horizontal = 10
+inner.vertical = 10
+outer.left = 10
+outer.right = 10
+outer.top = 10
+outer.bottom = 10
+
+[mode.main.binding]
+# Focus and move: Alt + H/J/K/L, Shift adds movement.
+alt-h = 'focus left'
+alt-j = 'focus down'
+alt-k = 'focus up'
+alt-l = 'focus right'
+alt-shift-h = 'move left'
+alt-shift-j = 'move down'
+alt-shift-k = 'move up'
+alt-shift-l = 'move right'
+
+# Four workspaces only: terminal, web, notes, misc.
+alt-1 = 'workspace 1'
+alt-2 = 'workspace 2'
+alt-3 = 'workspace 3'
+alt-4 = 'workspace 4'
+alt-shift-1 = 'move-node-to-workspace 1'
+alt-shift-2 = 'move-node-to-workspace 2'
+alt-shift-3 = 'move-node-to-workspace 3'
+alt-shift-4 = 'move-node-to-workspace 4'
+
+alt-space = 'layout floating tiling'
+alt-r = 'reload-config'
+alt-shift-q = 'close'
+alt-enter = 'exec-and-forget open -na Ghostty'
+alt-b = 'exec-and-forget open -na "Google Chrome"'
+alt-n = 'exec-and-forget open -na Obsidian'
+
+[[on-window-detected]]
+if.app-id = 'com.mitchellh.ghostty'
+run = 'move-node-to-workspace 1'
+
+[[on-window-detected]]
+if.app-id = 'com.google.Chrome'
+run = 'move-node-to-workspace 2'
+
+[[on-window-detected]]
+if.app-id = 'md.obsidian'
+run = 'move-node-to-workspace 3'
