@@ -31,3 +31,6 @@ output=$(PATH="$test_dir/bin:$PATH" HOME="$test_dir/home" $script --apply --hypr
 [[ $output != *'Hyprland-like workspace: preview only'* ]]
 [[ $output == *'Hyprland-like workspace applied'* ]]
 [[ -f "$test_dir/home/.aerospace.toml" ]]
+
+grep -Fxq "alt-slash = 'layout tiles horizontal vertical'" aerospace/kuro-hyprland.toml
+! grep -Fq 'on-window-detected' aerospace/kuro-hyprland.toml
