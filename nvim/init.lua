@@ -741,13 +741,20 @@ require("lazy").setup({
 		init = function()
 			vim.g.barbar_auto_setup = false
 		end,
-		opts = {},
+		opts = {
+			icons = {
+				button = "󰅖",
+				filetype = { enabled = true },
+				modified = { button = "●" },
+				separator = { left = "▎", right = "" },
+			},
+			maximum_padding = 1,
+			minimum_padding = 1,
+		},
 		version = "^1.0.0",
 	},
 
-	-- Bottom statusline: filename, line count, error/warning counts. Replaces
-	-- the old hand-rolled statusline with lualine, kept to the same 3 pieces
-	-- of information (nothing else).
+	-- Bottom command deck: mode, Git, file state, diagnostics and position.
 	{
 		"nvim-lualine/lualine.nvim",
 		event = "VeryLazy",
@@ -756,20 +763,31 @@ require("lazy").setup({
 			require("lualine").setup({
 				options = {
 					theme = "auto",
+					icons_enabled = true,
 					globalstatus = true, -- one global statusline, matches laststatus = 3
 					component_separators = { left = "│", right = "│" },
 					section_separators = { left = "", right = "" },
 				},
 				sections = {
-					lualine_a = { "filename" },
-					lualine_b = {},
-					lualine_c = {},
+					lualine_a = { { "mode", icon = "󰊠" } },
+					lualine_b = {
+						{ "branch", icon = "" },
+						{ "diff", symbols = { added = " ", modified = " ", removed = " " } },
+					},
+					lualine_c = {
+						{
+							"filename",
+							path = 1,
+							symbols = { modified = " ●", readonly = " ", unnamed = "[No Name]" },
+						},
+					},
 					lualine_x = {
 						{
 							function()
-								return "Lines: " .. vim.fn.line("$")
+								return "󰈔 " .. vim.fn.line("$") .. " lines"
 							end,
 						},
+						{ "filetype", colored = true },
 					},
 					lualine_y = {
 						{
@@ -806,7 +824,7 @@ require("lazy").setup({
 							end,
 						},
 					},
-					lualine_z = {},
+					lualine_z = { "location" },
 				},
 				inactive_sections = {
 					lualine_a = {},
@@ -818,6 +836,38 @@ require("lazy").setup({
 				},
 			})
 		end,
+	},
+
+	{
+		"folke/snacks.nvim",
+		lazy = false,
+		priority = 900,
+		opts = {
+			dashboard = { enabled = true },
+			notifier = { enabled = true, style = "compact" },
+			scroll = { enabled = true },
+			terminal = { enabled = true },
+			words = { enabled = true },
+			zen = { enabled = true },
+		},
+		keys = {
+			{ "<C-/>", function() Snacks.terminal() end, desc = "Toggle terminal", mode = { "n", "t" } },
+			{ "<leader>.", function() Snacks.scratch() end, desc = "Scratchpad" },
+			{ "<leader>n", function() Snacks.notifier.show_history() end, desc = "Notification history" },
+			{ "<leader>z", function() Snacks.zen() end, desc = "Zen mode" },
+		},
+	},
+
+	{
+		"folke/todo-comments.nvim",
+		lazy = false,
+		dependencies = { "nvim-lua/plenary.nvim" },
+		opts = { signs = true },
+		keys = {
+			{ "]t", function() require("todo-comments").jump_next() end, desc = "Next todo" },
+			{ "[t", function() require("todo-comments").jump_prev() end, desc = "Previous todo" },
+			{ "<leader>st", "<cmd>TodoTelescope<cr>", desc = "Search todos" },
+		},
 	},
 
 	{ "windwp/nvim-autopairs", event = "InsertEnter", config = true },
