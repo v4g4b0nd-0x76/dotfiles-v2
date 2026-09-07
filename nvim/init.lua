@@ -845,7 +845,7 @@ require("lazy").setup({
 		opts = {
 			dashboard = { enabled = true },
 			notifier = { enabled = true, style = "compact" },
-			scroll = { enabled = true },
+			scroll = { enabled = false },
 			terminal = { enabled = true },
 			words = { enabled = true },
 			zen = { enabled = true },
