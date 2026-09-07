@@ -8,9 +8,9 @@ vim.o.background = "dark"
 vim.g.colors_name = "kuro_nezumi"
 
 local c = {
-	ink = "#080808", ink_alt = "#101010", surface = "#171717",
-	raised = "#202020", border = "#343434", paper = "#d7d2c8",
-	soft = "#9a948a", muted = "#6f6a63", red = "#b73535",
+	ink = "#050505", ink_alt = "#0c0c0c", surface = "#141414",
+	raised = "#1c1c1c", border = "#303030", paper = "#cdc4ba",
+	soft = "#9b948b", muted = "#69645d", red = "#b73535",
 	red_hi = "#d94a4a", selection = "#2a1818", green = "#8a8f73",
 	yellow = "#b8a781", blue = "#8c9097", cyan = "#7f9693",
 }
