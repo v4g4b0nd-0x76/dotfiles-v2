@@ -147,209 +147,31 @@ opt.winbar = "%{%v:lua.SimpleWinbar()%}"
 -- 4. GLOBAL KEYMAPS
 -- ========================================================================== --
 
--- Function/method boundary navigation.
--- ][ moves to the end of the smallest enclosing function/method.
--- [] moves to its start. Works in normal and visual modes.
-local callable_symbol_kinds = {
-	[vim.lsp.protocol.SymbolKind.Function] = true,
-	[vim.lsp.protocol.SymbolKind.Method] = true,
-	[vim.lsp.protocol.SymbolKind.Constructor] = true,
-}
+-- Enclosing brace navigation. ][ moves to the matching }, [] to its {.
+local function current_brace_bounds()
+	local cursor = vim.api.nvim_win_get_cursor(0)
+	local start = vim.fn.searchpairpos("{", "", "}", "bnW")
 
-local callable_ts_nodes = {
-	function_item = true,
-	function_declaration = true,
-	function_definition = true,
-	function_expression = true,
-	generator_function_declaration = true,
-	generator_function = true,
-	arrow_function = true,
-	method_definition = true,
-	method_declaration = true,
-	constructor_declaration = true,
-	closure_expression = true,
-	func_literal = true,
-	lambda_expression = true,
-	lambda = true,
-	local_function_statement = true,
-	anonymous_method_expression = true,
-}
-
-local function first_nonblank_position(row, fallback_col)
-	local line = vim.api.nvim_buf_get_lines(0, row, row + 1, false)[1] or ""
-	local first = line:find("%S")
-	return row, first and first - 1 or fallback_col or 0
-end
-
-local function last_nonblank_position(start_row, end_row, end_col)
-	local row = end_row
-
-	while row >= start_row do
-		local line = vim.api.nvim_buf_get_lines(0, row, row + 1, false)[1] or ""
-		local limit = #line
-
-		if row == end_row then
-			limit = math.min(end_col, #line)
-		end
-
-		for col = limit, 1, -1 do
-			if not line:sub(col, col):match("%s") then
-				return row, col - 1
-			end
-		end
-
-		row = row - 1
-	end
-
-	return start_row, 0
-end
-
-local function range_contains_cursor_line(range, cursor_row)
-	return range.start.line <= cursor_row and cursor_row <= range["end"].line
-end
-
-local function range_span(range)
-	return (range["end"].line - range.start.line) * 1000000
-		+ math.max(range["end"].character - range.start.character, 0)
-end
-
-local function enclosing_lsp_callable()
-	local bufnr = vim.api.nvim_get_current_buf()
-	local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
-	local clients = vim.lsp.get_clients({ bufnr = bufnr })
-
-	if #clients == 0 then
+	if start[1] == 0 then
 		return nil
 	end
 
-	local supports_document_symbols = false
-	for _, client in ipairs(clients) do
-		if client:supports_method("textDocument/documentSymbol") then
-			supports_document_symbols = true
-			break
-		end
-	end
+	vim.api.nvim_win_set_cursor(0, { start[1], start[2] - 1 })
+	local finish = vim.fn.searchpairpos("{", "", "}", "nW")
+	vim.api.nvim_win_set_cursor(0, cursor)
 
-	if not supports_document_symbols then
+	if finish[1] == 0 then
 		return nil
 	end
 
-	local responses = vim.lsp.buf_request_sync(bufnr, "textDocument/documentSymbol", {
-		textDocument = vim.lsp.util.make_text_document_params(),
-	}, 1000)
-
-	if not responses then
-		return nil
-	end
-
-	local best_range
-	local best_span
-
-	local function visit(symbol)
-		local range = symbol.range or (symbol.location and symbol.location.range)
-
-		if range and callable_symbol_kinds[symbol.kind] and range_contains_cursor_line(range, cursor_row) then
-			local span = range_span(range)
-
-			if not best_span or span < best_span then
-				best_range = range
-				best_span = span
-			end
-		end
-
-		for _, child in ipairs(symbol.children or {}) do
-			visit(child)
-		end
-	end
-
-	for _, response in pairs(responses) do
-		if response.result then
-			for _, symbol in ipairs(response.result) do
-				visit(symbol)
-			end
-		end
-	end
-
-	return best_range
+	return start[1] - 1, start[2] - 1, finish[1] - 1, finish[2] - 1
 end
 
-local function node_contains_cursor_line(node, cursor_row)
-	local start_row, _, end_row, _ = node:range()
-	return start_row <= cursor_row and cursor_row <= end_row
-end
-
-local function node_span(node)
-	local start_row, start_col, end_row, end_col = node:range()
-	return (end_row - start_row) * 1000000 + math.max(end_col - start_col, 0)
-end
-
-local function enclosing_treesitter_callable()
-	local bufnr = vim.api.nvim_get_current_buf()
-	local cursor_row = vim.api.nvim_win_get_cursor(0)[1] - 1
-
-	local ok, parser = pcall(vim.treesitter.get_parser, bufnr)
-	if not ok or not parser then
-		return nil
-	end
-
-	local ok_parse, trees = pcall(parser.parse, parser)
-	if not ok_parse or not trees or not trees[1] then
-		return nil
-	end
-
-	local root = trees[1]:root()
-	local best_node
-	local best_span
-
-	local function visit(node)
-		if not node_contains_cursor_line(node, cursor_row) then
-			return
-		end
-
-		if callable_ts_nodes[node:type()] then
-			local span = node_span(node)
-			if not best_span or span < best_span then
-				best_node = node
-				best_span = span
-			end
-		end
-
-		for child in node:iter_children() do
-			visit(child)
-		end
-	end
-
-	visit(root)
-	return best_node
-end
-
-local function current_callable_bounds()
-	local range = enclosing_lsp_callable()
-
-	if range then
-		local start_row, start_col = first_nonblank_position(range.start.line, range.start.character)
-		local end_row, end_col = last_nonblank_position(range.start.line, range["end"].line, range["end"].character)
-
-		return start_row, start_col, end_row, end_col
-	end
-
-	local node = enclosing_treesitter_callable()
-	if not node then
-		return nil
-	end
-
-	local start_row, start_col, end_row, end_col = node:range()
-	start_row, start_col = first_nonblank_position(start_row, start_col)
-	end_row, end_col = last_nonblank_position(start_row, end_row, end_col)
-
-	return start_row, start_col, end_row, end_col
-end
-
-local function jump_current_function(to_end)
-	local start_row, start_col, end_row, end_col = current_callable_bounds()
+local function jump_current_brace(to_end)
+	local start_row, start_col, end_row, end_col = current_brace_bounds()
 
 	if start_row == nil then
-		vim.notify("Cursor is not inside a recognized function or method", vim.log.levels.WARN)
+		vim.notify("Cursor is not inside matching braces", vim.log.levels.WARN)
 		return
 	end
 
@@ -361,12 +183,12 @@ local function jump_current_function(to_end)
 end
 
 vim.keymap.set({ "n", "x" }, "][", function()
-	jump_current_function(true)
-end, { silent = true, desc = "End of Current Function/Method" })
+	jump_current_brace(true)
+end, { silent = true, desc = "Matching Closing Brace" })
 
 vim.keymap.set({ "n", "x" }, "[]", function()
-	jump_current_function(false)
-end, { silent = true, desc = "Start of Current Function/Method" })
+	jump_current_brace(false)
+end, { silent = true, desc = "Matching Opening Brace" })
 
 vim.keymap.set("n", "|", function()
 	require("telescope.builtin").find_files({
@@ -469,7 +291,13 @@ local function image_preview(filename)
 		vim.fn.jobstart({ "qlmanage", "-p", filename }, { detach = true })
 		vim.api.nvim_buf_set_lines(0, 0, -1, false, { "Opened image preview with qlmanage.", "", filename })
 	else
-		vim.api.nvim_buf_set_lines(0, 0, -1, false, { "Install chafa, viu, or catimg to preview images in Neovim.", "", filename })
+		vim.api.nvim_buf_set_lines(
+			0,
+			0,
+			-1,
+			false,
+			{ "Install chafa, viu, or catimg to preview images in Neovim.", "", filename }
+		)
 	end
 
 	vim.bo.buftype = "nofile"
@@ -843,7 +671,46 @@ require("lazy").setup({
 		lazy = false,
 		priority = 900,
 		opts = {
-			dashboard = { enabled = true },
+			dashboard = {
+				enabled = true,
+				preset = {
+					header = [[
+
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⣄⣸⣿⣀⡤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠎⠀⠀⠀⠀⠀⠀⠹⣿⣿⡿⠁⠀⠀⠀⠀⠀⠈⢦⡀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⠏⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠈⢿⣦⡀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⠏⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠈⢿⣿⣦⡀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣿⣦⡀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⡁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣹⣿⣿⣿⣦
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⣿⣿⡇⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⣿⣿⡇⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⣿⣿⣧⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣿⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣿⣿⣿⣿⣿⣿⣧⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠛⣿⣿⡟⠛⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⣿⣿⡇⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⡿⠋
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⡿⠋⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⡿⠋⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⡀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⣠⣾⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⡀⠀⠀⣿⣿⡇⠀⠀⣠⣾⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⣀⣿⣿⣇⣠⣾⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣿⣿⣿⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+
+]],
+				},
+			},
 			notifier = { enabled = true, style = "compact" },
 			scroll = { enabled = false },
 			terminal = { enabled = true },
@@ -851,11 +718,43 @@ require("lazy").setup({
 			zen = { enabled = true },
 		},
 		keys = {
-			{ "<C-/>", function() Snacks.terminal() end, desc = "Toggle terminal", mode = { "n", "t" } },
-			{ "<C-_>", function() Snacks.terminal() end, desc = "Toggle terminal", mode = { "n", "t" } },
-			{ "<leader>.", function() Snacks.scratch() end, desc = "Scratchpad" },
-			{ "<leader>n", function() Snacks.notifier.show_history() end, desc = "Notification history" },
-			{ "<leader>z", function() Snacks.zen() end, desc = "Zen mode" },
+			{
+				"<C-/>",
+				function()
+					Snacks.terminal()
+				end,
+				desc = "Toggle terminal",
+				mode = { "n", "t" },
+			},
+			{
+				"<C-_>",
+				function()
+					Snacks.terminal()
+				end,
+				desc = "Toggle terminal",
+				mode = { "n", "t" },
+			},
+			{
+				"<leader>.",
+				function()
+					Snacks.scratch()
+				end,
+				desc = "Scratchpad",
+			},
+			{
+				"<leader>n",
+				function()
+					Snacks.notifier.show_history()
+				end,
+				desc = "Notification history",
+			},
+			{
+				"<leader>z",
+				function()
+					Snacks.zen()
+				end,
+				desc = "Zen mode",
+			},
 		},
 	},
 
@@ -865,8 +764,20 @@ require("lazy").setup({
 		dependencies = { "nvim-lua/plenary.nvim" },
 		opts = { signs = true },
 		keys = {
-			{ "]t", function() require("todo-comments").jump_next() end, desc = "Next todo" },
-			{ "[t", function() require("todo-comments").jump_prev() end, desc = "Previous todo" },
+			{
+				"]t",
+				function()
+					require("todo-comments").jump_next()
+				end,
+				desc = "Next todo",
+			},
+			{
+				"[t",
+				function()
+					require("todo-comments").jump_prev()
+				end,
+				desc = "Previous todo",
+			},
 			{ "<leader>st", "<cmd>TodoTelescope<cr>", desc = "Search todos" },
 		},
 	},
