@@ -852,6 +852,7 @@ require("lazy").setup({
 		},
 		keys = {
 			{ "<C-/>", function() Snacks.terminal() end, desc = "Toggle terminal", mode = { "n", "t" } },
+			{ "<C-_>", function() Snacks.terminal() end, desc = "Toggle terminal", mode = { "n", "t" } },
 			{ "<leader>.", function() Snacks.scratch() end, desc = "Scratchpad" },
 			{ "<leader>n", function() Snacks.notifier.show_history() end, desc = "Notification history" },
 			{ "<leader>z", function() Snacks.zen() end, desc = "Zen mode" },
