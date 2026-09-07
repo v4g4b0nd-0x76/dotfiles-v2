@@ -17,11 +17,16 @@ typeset -r BLACKENED_WALLPAPER="$WALLPAPER_DIR/kuro-nezumi-musashi-blackened-192
 typeset -r ZEN_WALLPAPER="$WALLPAPER_DIR/kuro-nezumi-zen-samurai-1920x1080.png"
 typeset -r MINIMAL_WALLPAPER="$WALLPAPER_DIR/kuro-nezumi-musashi-minimal-1920x1080.png"
 typeset -r BACKUP_DIR="$HOME_DIR/.config/kuro-nezumi/backups"
+typeset -r AEROSPACE_CONFIG="$HOME_DIR/.aerospace.toml"
+typeset -r HYPRLAND_PROFILE="$DOTFILES/aerospace/kuro-hyprland.toml"
+typeset -r HYPRLAND_BACKUP_DIR="$BACKUP_DIR/hyprland"
 
 typeset mode='preview'
 typeset wallpaper="$BLACKENED_WALLPAPER"
 typeset apply_macos=true
 typeset apply_links=true
+typeset apply_hyprland=false
+typeset restore_hyprland=false
 
 usage() {
   cat <<'USAGE'
@@ -29,7 +34,7 @@ Kuro Nezumi macOS rice
 
 Usage:
   kuro-nezumi-rice.zsh [--apply] [--wallpaper blackened|zen|minimal|none]
-                         [--only macos|apps] [--help]
+                         [--only macos|apps] [--hyprland|--restore-hyprland] [--help]
 
 Without --apply the script only shows the exact changes it would make.
 
@@ -39,8 +44,13 @@ What --apply does:
   - refines Finder, the dark menu bar, Dock, and desktop icon alignment
   - creates missing safe links for Neovim, Sioyek, Obsidian, and Zsh/Spaceship
 
-It never overwrites an existing app config. Chrome/Stylus is intentionally
-left manual: a global CSS rule can break individual websites.
+It never overwrites an existing app config. Hyprland-like mode replaces only
+the AeroSpace config after making a backup. Chrome/Stylus stays manual.
+
+Hyprland-like mode:
+  --hyprland          use the four-workspace AeroSpace profile and hide the Dock
+  --restore-hyprland  restore the AeroSpace and Dock preferences backed up by --hyprland
+  Both are preview-only until --apply is supplied. No security settings are changed.
 USAGE
 }
 
@@ -139,6 +149,65 @@ set_workspace_chrome() {
   killall Dock 2>/dev/null || true
 }
 
+set_hyprland_workspace() {
+  if [[ "$mode" == preview ]]; then
+    note 'Hyprland-like workspace: preview only'
+    note 'would back up AeroSpace, apply the four-workspace profile, and make the Dock compact and auto-hidden'
+    note 'keys: Alt+H/J/K/L focus; Alt+Shift+H/J/K/L move; Alt+1..4 workspaces; Alt+Space float; Alt+R reload'
+    return 0
+  fi
+
+  if [[ ! -f "$HYPRLAND_PROFILE" ]]; then
+    warn "AeroSpace profile is missing: $HYPRLAND_PROFILE"
+    return 1
+  fi
+
+  mkdir -p "$HYPRLAND_BACKUP_DIR"
+  if [[ ! -e "$HYPRLAND_BACKUP_DIR/aerospace.toml" && ! -e "$HYPRLAND_BACKUP_DIR/aerospace.toml.absent" ]]; then
+    if [[ -f "$AEROSPACE_CONFIG" ]]; then
+      cp "$AEROSPACE_CONFIG" "$HYPRLAND_BACKUP_DIR/aerospace.toml"
+    else
+      : > "$HYPRLAND_BACKUP_DIR/aerospace.toml.absent"
+    fi
+    defaults export com.apple.dock "$HYPRLAND_BACKUP_DIR/com.apple.dock.plist"
+    good "Hyprland-like preferences backed up: $HYPRLAND_BACKUP_DIR"
+  fi
+
+  cp "$HYPRLAND_PROFILE" "$AEROSPACE_CONFIG"
+  defaults write com.apple.dock autohide -bool true
+  defaults write com.apple.dock autohide-delay -float 0
+  defaults write com.apple.dock autohide-time-modifier -float 0.18
+  defaults write com.apple.dock tilesize -int 42
+  defaults write com.apple.dock magnification -bool false
+  killall Dock 2>/dev/null || true
+  command -v aerospace >/dev/null && aerospace reload-config || true
+  good 'Hyprland-like workspace applied — approve Accessibility for AeroSpace only if macOS asks'
+}
+
+restore_hyprland_workspace() {
+  note 'Hyprland-like workspace: restore'
+  if [[ "$mode" == preview ]]; then
+    note "would restore AeroSpace and Dock from: $HYPRLAND_BACKUP_DIR"
+    return 0
+  fi
+
+  if [[ -f "$HYPRLAND_BACKUP_DIR/aerospace.toml" ]]; then
+    cp "$HYPRLAND_BACKUP_DIR/aerospace.toml" "$AEROSPACE_CONFIG"
+  elif [[ -f "$HYPRLAND_BACKUP_DIR/aerospace.toml.absent" ]]; then
+    rm -f "$AEROSPACE_CONFIG"
+  else
+    warn "no AeroSpace backup found in: $HYPRLAND_BACKUP_DIR"
+  fi
+  if [[ -f "$HYPRLAND_BACKUP_DIR/com.apple.dock.plist" ]]; then
+    defaults import com.apple.dock "$HYPRLAND_BACKUP_DIR/com.apple.dock.plist"
+  else
+    warn "no Dock backup found in: $HYPRLAND_BACKUP_DIR"
+  fi
+  killall Dock 2>/dev/null || true
+  command -v aerospace >/dev/null && aerospace reload-config || true
+  good 'Hyprland-like workspace restored'
+}
+
 set_wallpaper() {
   if [[ "$wallpaper" == none ]]; then
     note 'wallpaper: unchanged'
@@ -212,6 +281,13 @@ while (( $# )); do
         *) warn "unknown scope: $1"; exit 2 ;;
       esac
       ;;
+    --hyprland)
+      apply_hyprland=true
+      apply_links=false
+      ;;
+    --restore-hyprland)
+      restore_hyprland=true
+      ;;
     --help|-h)
       usage
       exit 0
@@ -228,10 +304,19 @@ done
 print -P "%F{#D94A4A}KURO NEZUMI%f %F{#6F6A63}// macOS rice //%f %F{#D7D2C8}$mode%f"
 say 'black / ash / warm paper / signal red'
 
+if [[ "$restore_hyprland" == true ]]; then
+  restore_hyprland_workspace
+  exit 0
+fi
+
 if [[ "$apply_macos" == true ]]; then
   set_macos_appearance
   set_wallpaper
   set_workspace_chrome
+fi
+
+if [[ "$apply_hyprland" == true ]]; then
+  set_hyprland_workspace
 fi
 
 if [[ "$apply_links" == true ]]; then
