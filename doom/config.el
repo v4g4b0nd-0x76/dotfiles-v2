@@ -1,7 +1,7 @@
 ;;; config.el -*- lexical-binding: t; -*-
 
 (setq user-full-name "jafari"
-      doom-theme 'doom-gruvbox
+      doom-theme 'srcery
       doom-font (font-spec :family "Hack Nerd Font Mono" :size 16)
       display-line-numbers-type 'relative
       org-directory "~/notes"

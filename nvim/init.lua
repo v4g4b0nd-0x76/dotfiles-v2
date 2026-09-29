@@ -72,7 +72,7 @@ opt.fillchars = { vert = "│", eob = " " } -- cleaner vertical split separators
 
 -- Ghostty uses an extensionless `config` file, so Neovim cannot infer its
 -- syntax by filename alone. Treat it as a standard key/value config file to
--- retain the Kuro Nezumi syntax colors when editing terminal settings.
+-- retain Srcery syntax colors when editing terminal settings.
 vim.filetype.add({
 	pattern = {
 		[".*/ghostty/config"] = "conf",
@@ -98,32 +98,6 @@ vim.diagnostic.config({
 		},
 	},
 })
-
--- ========================================================================== --
--- 2. HIGHLIGHT GROUPS
--- ========================================================================== --
-vim.api.nvim_set_hl(0, "DiagnosticLineNrError", { fg = "#f38ba8", bold = true })
-vim.api.nvim_set_hl(0, "DiagnosticLineNrWarn", { fg = "#fab387", bold = true })
-vim.api.nvim_set_hl(0, "DiagnosticLineNrInfo", { fg = "#89b4fa", bold = true })
-vim.api.nvim_set_hl(0, "DiagnosticLineNrHint", { fg = "#a6adc8", bold = true })
-vim.api.nvim_set_hl(0, "DiagnosticVirtualTextError", { fg = "#f38ba8", italic = true })
-vim.api.nvim_set_hl(0, "DiagnosticVirtualTextWarn", { fg = "#fab387", italic = true })
-vim.api.nvim_set_hl(0, "DiagnosticVirtualTextInfo", { fg = "#89b4fa", italic = true })
-vim.api.nvim_set_hl(0, "DiagnosticVirtualTextHint", { fg = "#a6adc8", italic = true })
-
--- Winbar - Neovim uses "WinBar" for the focused split and "WinBarNC" for
--- every other split automatically, so styling these two groups is enough
--- to make each split visually distinct.
-vim.api.nvim_set_hl(0, "WinBar", { fg = "#1e1e2e", bg = "#a6adc8", bold = true })
-vim.api.nvim_set_hl(0, "WinBarNC", { fg = "#6c7086", bg = "NONE", italic = true })
-vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#a6adc8", bold = true })
-
--- Multicursor selections: the plugin's default is a dark reverse-video
--- block, which is what you were calling "not cool". These two groups are
--- the only ones multicursors.nvim exposes, so overriding them is enough
--- to get a light, readable highlight for every selection.
-vim.api.nvim_set_hl(0, "MultiCursor", { bg = "#f9e2af", fg = "#1e1e2e" })
-vim.api.nvim_set_hl(0, "MultiCursorMain", { bg = "#a6e3a1", fg = "#1e1e2e", bold = true })
 
 -- ========================================================================== --
 -- 3. WINBAR
@@ -554,11 +528,6 @@ local function lsp_on_attach(client, bufnr)
 	end, { buffer = bufnr, desc = "Restart LSP for Current File" })
 end
 
--- ========================================================================== --
--- 8. PLUGIN SPECS
--- ========================================================================== --
-vim.cmd.colorscheme("kuro_nezumi")
-
 require("lazy").setup({
 	{ "j-hui/fidget.nvim", event = "VeryLazy", opts = {} },
 
@@ -645,9 +614,9 @@ require("lazy").setup({
 									return
 								end
 								if (counts[vim.diagnostic.severity.ERROR] or 0) > 0 then
-									return { fg = "#f38ba8", bold = true }
+									return { fg = "#EF2F27", bold = true }
 								elseif (counts[vim.diagnostic.severity.WARN] or 0) > 0 then
-									return { fg = "#fab387", bold = true }
+									return { fg = "#FBB829", bold = true }
 								end
 							end,
 						},
@@ -663,6 +632,14 @@ require("lazy").setup({
 					lualine_z = {},
 				},
 			})
+		end,
+	},
+	{
+		"srcery-colors/srcery-vim",
+		lazy = false,
+		priority = 1000,
+		config = function()
+			vim.cmd.colorscheme("srcery")
 		end,
 	},
 	{
@@ -1515,7 +1492,7 @@ require("lazy").setup({
 -- 9. AUTOCOMMANDS
 -- ========================================================================== --
 
-vim.api.nvim_set_hl(0, "LspInlayHint", { fg = "#545464", bg = "NONE", italic = true })
+vim.api.nvim_set_hl(0, "LspInlayHint", { fg = "#917E6B", bg = "NONE", italic = true })
 
 -- LSP logs are invaluable while debugging, but an unbounded log had grown to
 -- several gigabytes here. Retain the latest diagnostics only, without doing a

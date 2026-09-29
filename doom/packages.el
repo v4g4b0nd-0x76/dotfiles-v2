@@ -1,3 +1,4 @@
 ;;; packages.el -*- lexical-binding: t; -*-
 
-;; Doom's built-in modules cover this setup. Add packages only when a real gap hurts.
+;; Srcery is the one external theme this setup needs.
+(package! srcery-theme)

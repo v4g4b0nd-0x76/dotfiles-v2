@@ -30,10 +30,10 @@ style = "Bold Italic"
 [bell]
 animation = "EaseOutExpo"
 duration = 0
-color = "#000000"
+color = "#121110"
 
 [general]
 live_config_reload = true
 import = [
-    "~/.config/alacritty/themes/gruvbox-material-dark-hard.toml"
+    "~/.config/alacritty/themes/srcery.toml"
 ]
