@@ -103,19 +103,84 @@ vim.diagnostic.config({
 -- 3. WINBAR
 -- ========================================================================== --
 
--- Per-split identifier winbar: makes it obvious which buffer/split you're in
--- when several are open side by side, with a modified indicator.
--- (The bottom statusline itself is now handled by lualine.nvim, see the
--- plugin spec section below.)
-function _G.SimpleWinbar()
-	local filename = vim.fn.expand("%:t")
-	if filename == "" then
-		filename = "[No Name]"
-	end
-	local modified = vim.bo.modified and " ●" or ""
-	return "  " .. filename .. modified .. "  "
+local yorha_started_at = (vim.uv or vim.loop).hrtime()
+
+_G.YorhaRonin = {}
+
+function YorhaRonin.project_name(cwd)
+	local path = cwd or vim.fn.getcwd()
+	local name = vim.fn.fnamemodify(path, ":t")
+	return name ~= "" and name or path
 end
-opt.winbar = "%{%v:lua.SimpleWinbar()%}"
+
+function YorhaRonin.relative_file(bufnr)
+	local buffer = bufnr or 0
+	local name = vim.api.nvim_buf_get_name(buffer)
+	return name == "" and "[No Name]" or vim.fn.fnamemodify(name, ":.")
+end
+
+function YorhaRonin.lsp_name(bufnr)
+	local ok, clients = pcall(vim.lsp.get_clients, { bufnr = bufnr or 0 })
+	if not ok or #clients == 0 then
+		return ""
+	end
+	local names = {}
+	for _, client in ipairs(clients) do
+		table.insert(names, client.name)
+	end
+	table.sort(names)
+	return table.concat(names, "/")
+end
+
+function YorhaRonin.diagnostics(bufnr)
+	local ok, counts = pcall(vim.diagnostic.count, bufnr or 0)
+	if not ok or not counts then
+		return ""
+	end
+	local parts = {}
+	local errors = counts[vim.diagnostic.severity.ERROR] or 0
+	local warnings = counts[vim.diagnostic.severity.WARN] or 0
+	if errors > 0 then
+		table.insert(parts, "E:" .. errors)
+	end
+	if warnings > 0 then
+		table.insert(parts, "W:" .. warnings)
+	end
+	return table.concat(parts, " ")
+end
+
+function YorhaRonin.session_elapsed()
+	local seconds = math.floor(((vim.uv or vim.loop).hrtime() - yorha_started_at) / 1e9)
+	return string.format("%02d:%02d", math.floor(seconds / 3600), math.floor(seconds / 60) % 60)
+end
+
+function YorhaRonin.winbar()
+	local buffer = vim.api.nvim_get_current_buf()
+	local lsp = YorhaRonin.lsp_name(buffer)
+	local state = vim.bo[buffer].modified and " ●" or ""
+	local context = lsp ~= "" and ("  LSP:" .. lsp) or ""
+	return "  06 // " .. YorhaRonin.project_name() .. " :: " .. YorhaRonin.relative_file(buffer) .. state .. context .. "  "
+end
+
+function YorhaRonin.apply_highlights()
+	local groups = {
+		YorhaSignal = { fg = "#f75341", bold = true },
+		YorhaPaper = { fg = "#fce8c3" },
+		YorhaMuted = { fg = "#917e6b" },
+		YorhaBrass = { fg = "#fbb829" },
+		YorhaHealthy = { fg = "#519f50" },
+		YorhaSurface = { fg = "#fce8c3", bg = "#121110" },
+		WinBar = { fg = "#917e6b", bg = "#121110" },
+		WinBarNC = { fg = "#585858", bg = "#121110" },
+	}
+	for name, value in pairs(groups) do
+		vim.api.nvim_set_hl(0, name, value)
+	end
+end
+
+YorhaRonin.apply_highlights()
+vim.api.nvim_create_autocmd("ColorScheme", { callback = YorhaRonin.apply_highlights })
+opt.winbar = "%{%v:lua.YorhaRonin.winbar()%}"
 
 -- ========================================================================== --
 -- 4. GLOBAL KEYMAPS
@@ -557,16 +622,34 @@ require("lazy").setup({
 		event = "VeryLazy",
 		dependencies = { "nvim-tree/nvim-web-devicons" },
 		config = function()
+			local surface = { fg = "#fce8c3", bg = "#121110" }
+			local muted = { fg = "#917e6b", bg = "#121110" }
+			local function mode(color)
+				return {
+					a = { fg = "#121110", bg = color, gui = "bold" },
+					b = muted,
+					c = surface,
+				}
+			end
+			local theme = {
+				normal = mode("#f75341"),
+				insert = mode("#519f50"),
+				visual = mode("#fbb829"),
+				replace = mode("#ef2f27"),
+				command = mode("#fce8c3"),
+				inactive = { a = muted, b = muted, c = muted },
+			}
+
 			require("lualine").setup({
 				options = {
-					theme = "auto",
+					theme = theme,
 					icons_enabled = true,
 					globalstatus = true, -- one global statusline, matches laststatus = 3
 					component_separators = { left = "│", right = "│" },
 					section_separators = { left = "", right = "" },
 				},
 				sections = {
-					lualine_a = { { "mode", icon = "󰊠" } },
+					lualine_a = { { "mode", icon = "刀" } },
 					lualine_b = {
 						{ "branch", icon = "" },
 						{ "diff", symbols = { added = " ", modified = " ", removed = " " } },
@@ -581,33 +664,15 @@ require("lazy").setup({
 					lualine_x = {
 						{
 							function()
-								return "󰈔 " .. vim.fn.line("$") .. " lines"
+								local name = YorhaRonin.lsp_name()
+								return name ~= "" and ("LSP:" .. name) or ""
 							end,
 						},
-						{ "filetype", colored = true },
+						{ "filetype", colored = false },
 					},
 					lualine_y = {
 						{
-							-- Built directly on vim.diagnostic.count() (same call your
-							-- old custom statusline used) instead of lualine's built-in
-							-- "diagnostics" component, so counts show reliably regardless
-							-- of which diagnostic source lualine expects.
-							function()
-								local ok, counts = pcall(vim.diagnostic.count, 0)
-								if not ok or not counts then
-									return ""
-								end
-								local errors = counts[vim.diagnostic.severity.ERROR] or 0
-								local warnings = counts[vim.diagnostic.severity.WARN] or 0
-								local parts = {}
-								if errors > 0 then
-									table.insert(parts, "E:" .. errors)
-								end
-								if warnings > 0 then
-									table.insert(parts, "W:" .. warnings)
-								end
-								return table.concat(parts, " ")
-							end,
+							YorhaRonin.diagnostics,
 							color = function()
 								local ok, counts = pcall(vim.diagnostic.count, 0)
 								if not ok or not counts then
@@ -621,7 +686,7 @@ require("lazy").setup({
 							end,
 						},
 					},
-					lualine_z = { "location" },
+					lualine_z = { YorhaRonin.session_elapsed, "location" },
 				},
 				inactive_sections = {
 					lualine_a = {},
