@@ -116,6 +116,17 @@ end
 function YorhaRonin.relative_file(bufnr)
 	local buffer = bufnr or 0
 	local name = vim.api.nvim_buf_get_name(buffer)
+	local buftype = vim.bo[buffer].buftype
+	local filetype = vim.bo[buffer].filetype
+	if buftype == "help" then
+		return name == "" and "[Help]" or ("[Help: " .. vim.fn.fnamemodify(name, ":t") .. "]")
+	end
+	if buftype == "terminal" then
+		return "[Terminal]"
+	end
+	if buftype ~= "" then
+		return "[" .. (filetype ~= "" and filetype or buftype) .. "]"
+	end
 	return name == "" and "[No Name]" or vim.fn.fnamemodify(name, ":.")
 end
 
@@ -194,6 +205,7 @@ function YorhaRonin.apply_highlights()
 end
 
 local yorha_todo_cache = ""
+local yorha_telemetry_cwd
 local yorha_context = {}
 
 local function yorha_command(args, cwd, timeout)
@@ -211,7 +223,7 @@ function YorhaRonin.git_summary(cwd)
 		return ""
 	end
 	local output =
-		yorha_command({ "git", "status", "--short", "--branch", "--untracked-files=no" }, cwd or vim.fn.getcwd(), 300)
+		yorha_command({ "git", "status", "--short", "--branch" }, cwd or vim.fn.getcwd(), 300)
 	local lines = vim.split(output, "\n", { trimempty = true })
 	if not lines[1] or not vim.startswith(lines[1], "## ") then
 		return ""
@@ -243,7 +255,8 @@ function YorhaRonin.todo_status()
 end
 
 function YorhaRonin.refresh_telemetry(cwd)
-	yorha_todo_cache = YorhaRonin.todo_count(cwd)
+	yorha_telemetry_cwd = cwd or vim.fn.getcwd()
+	yorha_todo_cache = YorhaRonin.todo_count(yorha_telemetry_cwd)
 end
 
 function YorhaRonin.session_available(cwd)
@@ -280,12 +293,54 @@ function YorhaRonin.telemetry_items()
 	return items
 end
 
+local yorha_telemetry_group = vim.api.nvim_create_augroup("YorhaRoninTelemetry", { clear = true })
+
 vim.api.nvim_create_autocmd("BufWritePost", {
-	group = vim.api.nvim_create_augroup("YorhaRoninTelemetry", { clear = true }),
+	group = yorha_telemetry_group,
 	callback = function()
 		YorhaRonin.refresh_telemetry()
 	end,
 })
+
+local function refresh_visible_telemetry()
+	local cwd = yorha_context.cwd or vim.fn.getcwd()
+	if yorha_telemetry_cwd ~= cwd then
+		YorhaRonin.refresh_telemetry(cwd)
+	end
+	vim.schedule(function()
+		vim.api.nvim_exec_autocmds("User", { pattern = "SnacksDashboardUpdate", modeline = false })
+	end)
+end
+
+vim.api.nvim_create_autocmd("VimEnter", {
+	group = yorha_telemetry_group,
+	callback = function()
+		vim.schedule(refresh_visible_telemetry)
+	end,
+})
+
+vim.api.nvim_create_autocmd("User", {
+	group = yorha_telemetry_group,
+	pattern = "SnacksDashboardOpened",
+	callback = refresh_visible_telemetry,
+})
+
+local function telescope_action(picker)
+	return function()
+		require("lazy").load({ plugins = { "telescope.nvim" } })
+		require("telescope.builtin")[picker]()
+	end
+end
+
+local function return_to_deck_source()
+	local source_buf = yorha_context.buf
+	if vim.bo.filetype == "snacks_dashboard" and vim.fn.tabpagenr("$") > 1 then
+		vim.cmd("tabclose")
+	end
+	if source_buf and vim.api.nvim_buf_is_valid(source_buf) then
+		vim.api.nvim_set_current_buf(source_buf)
+	end
+end
 
 function YorhaRonin.deck_sections()
 	return {
@@ -307,19 +362,13 @@ function YorhaRonin.deck_sections()
 			title = "NAVIGATE",
 			padding = 1,
 			{ icon = "01", key = "f", desc = "Find files", action = "<leader>ff" },
-			{ icon = "02", key = "g", desc = "Live grep", action = "<leader>fg" },
+			{ icon = "02", key = "g", desc = "Live grep", action = telescope_action("live_grep") },
 			{
 				icon = "03",
 				key = "s",
 				desc = "Document symbols",
 				action = function()
-					local source_buf = yorha_context.buf
-					if vim.bo.filetype == "snacks_dashboard" and vim.fn.tabpagenr("$") > 1 then
-						vim.cmd("tabclose")
-					end
-					if source_buf and vim.api.nvim_buf_is_valid(source_buf) then
-						vim.api.nvim_set_current_buf(source_buf)
-					end
+					return_to_deck_source()
 					require("lazy").load({ plugins = { "telescope.nvim" } })
 					require("telescope.builtin").lsp_document_symbols()
 				end,
@@ -347,17 +396,27 @@ function YorhaRonin.deck_sections()
 			pane = 2,
 			title = "OPERATE",
 			padding = 1,
-			{ icon = "07", key = "c", desc = "Browse commits", action = "<leader>gcc" },
-			{ icon = "08", key = "d", desc = "Workspace diagnostics", action = "<leader>dw" },
-			{ icon = "09", key = "o", desc = "Search TODO marks", action = "<leader>st" },
+			{ icon = "07", key = "v", desc = "Git status", action = telescope_action("git_status") },
+			{
+				icon = "08",
+				key = "r",
+				desc = "Current file diff",
+				action = function()
+					return_to_deck_source()
+					vim.cmd("DiffviewOpen -- %")
+				end,
+			},
+			{ icon = "09", key = "c", desc = "Browse commits", action = "<leader>gcc" },
+			{ icon = "10", key = "d", desc = "Workspace diagnostics", action = "<leader>dw" },
+			{ icon = "11", key = "o", desc = "Search TODO marks", action = "<leader>st" },
 		},
 		{
 			pane = 3,
 			title = "OBJECTIVES",
 			padding = 1,
-			{ icon = "10", key = "p", desc = "Saved projects", action = "<leader>pl" },
+			{ icon = "12", key = "p", desc = "Saved projects", action = "<leader>pl" },
 			{
-				icon = "11",
+				icon = "13",
 				key = "e",
 				desc = "Resume field record",
 				enabled = function()
@@ -368,7 +427,7 @@ function YorhaRonin.deck_sections()
 					vim.cmd("source " .. vim.fn.fnameescape(vim.fs.joinpath(cwd, ".nvim_session")))
 				end,
 			},
-			{ icon = "12", key = "Q", desc = "Quit Neovim", action = ":qa" },
+			{ icon = "14", key = "Q", desc = "Quit Neovim", action = ":qa" },
 		},
 		{ pane = 3, section = "startup", padding = 1 },
 	}
@@ -1191,6 +1250,7 @@ require("lazy").setup({
 	{
 		"nvim-telescope/telescope.nvim",
 		dependencies = { "nvim-lua/plenary.nvim" },
+		cmd = "Telescope",
 		keys = {
 			{ "<leader>ff", desc = "Search Files by Name" },
 			{ "<leader>fg", desc = "Project Search" },
