@@ -172,10 +172,94 @@ function YorhaRonin.apply_highlights()
 		YorhaSurface = { fg = "#fce8c3", bg = "#121110" },
 		WinBar = { fg = "#917e6b", bg = "#121110" },
 		WinBarNC = { fg = "#585858", bg = "#121110" },
+		SnacksDashboardNormal = { fg = "#fce8c3", bg = "#121110" },
+		SnacksDashboardHeader = { fg = "#917e6b", bg = "#121110" },
+		SnacksDashboardTitle = { fg = "#f75341", bg = "#121110", bold = true },
+		SnacksDashboardKey = { fg = "#f75341", bg = "#121110", bold = true },
+		SnacksDashboardDesc = { fg = "#fce8c3", bg = "#121110" },
+		SnacksDashboardIcon = { fg = "#fbb829", bg = "#121110" },
+		SnacksDashboardDir = { fg = "#917e6b", bg = "#121110" },
+		SnacksDashboardFile = { fg = "#fce8c3", bg = "#121110" },
+		SnacksDashboardFooter = { fg = "#519f50", bg = "#121110" },
 	}
 	for name, value in pairs(groups) do
 		vim.api.nvim_set_hl(0, name, value)
 	end
+end
+
+function YorhaRonin.deck_sections()
+	local cwd = vim.fn.getcwd()
+	return {
+		{ section = "header", pane = 1, padding = 1 },
+		{
+			pane = 1,
+			title = "ACTIVE CAMPAIGN // PROJECT",
+			text = {
+				{ YorhaRonin.project_name(cwd) .. "\n", hl = "YorhaPaper" },
+				{ vim.fn.fnamemodify(cwd, ":~"), hl = "YorhaMuted" },
+			},
+			padding = 1,
+		},
+		{
+			pane = 1,
+			title = "NAVIGATE",
+			padding = 1,
+			{ icon = "01", key = "f", desc = "Find files", action = ":Telescope find_files" },
+			{ icon = "02", key = "g", desc = "Live grep", action = ":Telescope live_grep" },
+			{ icon = "03", key = "s", desc = "Document symbols", action = ":Telescope lsp_document_symbols" },
+			{ icon = "04", key = "n", desc = "Scratch buffer", action = function() Snacks.scratch() end },
+			{ icon = "05", key = "t", desc = "Terminal", action = function() Snacks.terminal() end },
+		},
+		{ pane = 2, icon = "06", title = "RECENT TARGETS", section = "recent_files", indent = 1, padding = 1 },
+		{
+			pane = 2,
+			title = "OPERATE",
+			padding = 1,
+			{ icon = "07", key = "c", desc = "Browse commits", action = "<leader>gcc" },
+			{ icon = "08", key = "d", desc = "Workspace diagnostics", action = "<leader>dw" },
+			{ icon = "09", key = "o", desc = "Search TODO marks", action = "<leader>st" },
+		},
+		{
+			pane = 3,
+			title = "OBJECTIVES",
+			padding = 1,
+			{ icon = "10", key = "p", desc = "Saved projects", action = "<leader>pl" },
+			{
+				icon = "11",
+				key = "e",
+				desc = "Resume field record",
+				enabled = vim.fn.filereadable(cwd .. "/.nvim_session") == 1,
+				action = function()
+					vim.cmd("source " .. vim.fn.fnameescape(cwd .. "/.nvim_session"))
+				end,
+			},
+			{ icon = "12", key = "Q", desc = "Quit Neovim", action = ":qa" },
+		},
+		{ pane = 3, section = "startup", padding = 1 },
+	}
+end
+
+function YorhaRonin.open_deck()
+	if vim.bo.filetype == "snacks_dashboard" and vim.fn.tabpagenr("$") > 1 then
+		vim.cmd("tabclose")
+		return
+	end
+
+	vim.cmd("tabnew")
+	local ok, deck = pcall(Snacks.dashboard.open, { buf = 0, win = 0 })
+	if not ok then
+		vim.cmd("tabclose!")
+		error(deck)
+	end
+	local close = function()
+		if vim.fn.tabpagenr("$") > 1 then
+			vim.cmd("tabclose")
+		else
+			vim.cmd("bdelete")
+		end
+	end
+	vim.keymap.set("n", "q", close, { buffer = deck.buf, silent = true, desc = "Close command deck" })
+	vim.keymap.set("n", "<Esc>", close, { buffer = deck.buf, silent = true, desc = "Close command deck" })
 end
 
 YorhaRonin.apply_highlights()
@@ -731,43 +815,21 @@ require("lazy").setup({
 		opts = {
 			dashboard = {
 				enabled = true,
+				width = 42,
+				pane_gap = 3,
 				preset = {
 					header = [[
 
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⣄⣸⣿⣀⡤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠎⠀⠀⠀⠀⠀⠀⠹⣿⣿⡿⠁⠀⠀⠀⠀⠀⠈⢦⡀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⠏⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠈⢿⣦⡀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⠏⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠈⢿⣿⣦⡀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣿⣦⡀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⡁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣹⣿⣿⣿⣦
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⣿⣿⡇⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⣿⣿⡇⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⣿⣿⣧⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣿⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣿⣿⣿⣿⣿⣿⣧⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠛⣿⣿⡟⠛⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⣿⣿⡇⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦⡀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣦
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⡿⠋
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⡿⠋⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⡀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⡿⠋⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⡀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⣠⣾⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⡀⠀⠀⣿⣿⡇⠀⠀⣠⣾⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣦⣀⣿⣿⣇⣠⣾⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣿⣿⣿⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+       /| ________________________
+  O===|* >________________________>
+       \\|             浪人
+      /_\\       THE BLADE WAITS
 
+          YORHA // RONIN
+       TACTICAL EDITOR SYSTEM
 ]],
 				},
+				sections = YorhaRonin.deck_sections(),
 			},
 			notifier = { enabled = true, style = "compact" },
 			scroll = { enabled = false },
@@ -776,6 +838,11 @@ require("lazy").setup({
 			zen = { enabled = true },
 		},
 		keys = {
+			{
+				"<leader>ud",
+				YorhaRonin.open_deck,
+				desc = "Toggle YoRHa Ronin command deck",
+			},
 			{
 				"<C-/>",
 				function()
@@ -1284,6 +1351,7 @@ require("lazy").setup({
 				{ "<leader>l", group = "LSP" },
 				{ "<leader>n", group = "Notes" },
 				{ "<leader>p", group = "Project" },
+				{ "<leader>u", group = "UI" },
 				{ "<leader>wq", "<C-w>c", desc = "Close Split" },
 				{ "<leader>wo", "<C-w>o", desc = "Only This Window" },
 				{ "<leader>w=", "<C-w>=", desc = "Equalize Splits" },
