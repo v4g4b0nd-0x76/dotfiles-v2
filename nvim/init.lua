@@ -683,6 +683,275 @@ vim.keymap.set("t", "<C-Up>", [[<C-\><C-n><C-w>k]], { desc = "Navigate Upper fro
 vim.keymap.set("t", "<C-Down>", [[<C-\><C-n><C-w>j]], { desc = "Navigate Lower from Terminal" })
 vim.keymap.set("t", "<C-w>", [[<C-\><C-n><C-w>]], { desc = "Allow Ctrl+W window navigation inside terminal" })
 
+local runner_filetypes = {
+	go = "go",
+	rust = "rust",
+	javascript = "typescript",
+	javascriptreact = "typescript",
+	typescript = "typescript",
+	typescriptreact = "typescript",
+}
+
+local function runner_lines()
+	return vim.api.nvim_buf_get_lines(0, 0, -1, false)
+end
+
+local function runner_relpath(root, file)
+	root = vim.fn.fnamemodify(root, ":p")
+	file = vim.fn.fnamemodify(file, ":p")
+	if root:sub(-1) ~= "/" then
+		root = root .. "/"
+	end
+	return file:sub(1, #root) == root and file:sub(#root + 1) or file
+end
+
+local function runner_shell(args)
+	return table.concat(vim.tbl_map(vim.fn.shellescape, args), " ")
+end
+
+local function runner_chain(commands)
+	local parts = {}
+	for _, args in ipairs(commands) do
+		table.insert(parts, runner_shell(args))
+	end
+	return table.concat(parts, " && ")
+end
+
+local function runner_root(file, markers)
+	local dir = vim.fn.fnamemodify(file, ":h")
+	return vim.fs.root(dir, markers) or dir
+end
+
+local function go_names(kind)
+	local prefix = kind == "bench" and "Benchmark" or "Test"
+	local names = {}
+	for _, line in ipairs(runner_lines()) do
+		local name = line:match("^%s*func%s+(" .. prefix .. "[%w_]+)%s*%(")
+		if name then
+			table.insert(names, name)
+		end
+	end
+	return names
+end
+
+local function go_nearest(kind)
+	local prefix = kind == "bench" and "Benchmark" or "Test"
+	local lines = runner_lines()
+	for row = vim.api.nvim_win_get_cursor(0)[1], 1, -1 do
+		local name = lines[row]:match("^%s*func%s+(" .. prefix .. "[%w_]+)%s*%(")
+		if name then
+			return name
+		end
+	end
+end
+
+local function ts_call_name(line, kind)
+	local callee, quote, tail = line:match("^%s*([%w_%.]+)%s*%(%s*([\"'`])(.+)")
+	if not callee then
+		return nil
+	end
+
+	local base = callee:match("^[%w_]+")
+	if kind == "bench" then
+		if base ~= "bench" then
+			return nil
+		end
+	elseif base ~= "test" and base ~= "it" and base ~= "describe" then
+		return nil
+	end
+
+	return tail:match("^(.-)" .. quote)
+end
+
+local function ts_nearest(kind)
+	local lines = runner_lines()
+	for row = vim.api.nvim_win_get_cursor(0)[1], 1, -1 do
+		local name = ts_call_name(lines[row], kind)
+		if name and name ~= "" then
+			return name
+		end
+	end
+end
+
+local function js_command(root, script)
+	if vim.uv.fs_stat(vim.fs.joinpath(root, "bun.lockb")) or vim.uv.fs_stat(vim.fs.joinpath(root, "bun.lock")) then
+		return script == "test" and { "bun", "test" } or { "bun", "run", script, "--" }
+	end
+	if vim.uv.fs_stat(vim.fs.joinpath(root, "pnpm-lock.yaml")) then
+		return script == "test" and { "pnpm", "test", "--" } or { "pnpm", "run", script, "--" }
+	end
+	if vim.uv.fs_stat(vim.fs.joinpath(root, "yarn.lock")) then
+		return script == "test" and { "yarn", "test", "--" } or { "yarn", script, "--" }
+	end
+	return script == "test" and { "npm", "test", "--" } or { "npm", "run", script, "--" }
+end
+
+local function rust_fn_kind(lines, row, kind)
+	local name = lines[row]:match("^%s*.-fn%s+([%w_]+)%s*%(")
+	if not name then
+		return nil
+	end
+
+	local tagged = false
+	for i = row - 1, math.max(1, row - 5), -1 do
+		if lines[i]:match("^%s*#%[") then
+			tagged = tagged or lines[i]:find(kind, 1, true) ~= nil
+		elseif lines[i]:match("%S") then
+			break
+		end
+	end
+
+	if kind == "test" and (tagged or name:match("^test")) then
+		return name
+	end
+	if kind == "bench" and (tagged or name:lower():find("bench", 1, true)) then
+		return name
+	end
+end
+
+local function rust_names(kind)
+	local lines = runner_lines()
+	local names = {}
+	for row = 1, #lines do
+		local name = rust_fn_kind(lines, row, kind)
+		if name then
+			table.insert(names, name)
+		end
+	end
+	return names
+end
+
+local function rust_nearest(kind)
+	local lines = runner_lines()
+	local cursor = vim.api.nvim_win_get_cursor(0)[1]
+	for row = cursor, math.min(#lines, cursor + 8) do
+		local name = rust_fn_kind(lines, row, kind)
+		if name then
+			return name
+		end
+		if row > cursor and lines[row]:match("%S") and not lines[row]:match("^%s*#%[") and not lines[row]:match("^%s*//") then
+			break
+		end
+	end
+	for row = cursor, 1, -1 do
+		local name = rust_fn_kind(lines, row, kind)
+		if name then
+			return name
+		end
+	end
+end
+
+local function rust_target(root, file, dir)
+	local rel = runner_relpath(root, file)
+	local stem = rel:match("^" .. dir .. "/([^/]+)%.rs$")
+	return stem
+end
+
+function YorhaRonin.test_runner_command(kind, scope)
+	local file = vim.api.nvim_buf_get_name(0)
+	if file == "" then
+		return nil, "Save this file before running tests"
+	end
+
+	file = vim.fn.fnamemodify(file, ":p")
+	local lang = runner_filetypes[vim.bo.filetype]
+	if not lang then
+		return nil, "No test runner for filetype: " .. vim.bo.filetype
+	end
+
+	if lang == "go" then
+		local cwd = vim.fn.fnamemodify(file, ":h")
+		local names = scope == "file" and go_names(kind) or { go_nearest(kind) }
+		if not names[1] then
+			return nil, "No " .. kind .. " found in this Go file"
+		end
+		local pattern = "^" .. (scope == "file" and "(" .. table.concat(names, "|") .. ")" or names[1]) .. "$"
+		local args = kind == "test" and { "go", "test", "-v", "-run", pattern, "." }
+			or { "go", "test", "-run", "^$", "-bench", pattern, "." }
+		return { args = args, cwd = cwd }
+	end
+
+	if lang == "typescript" then
+		local root = runner_root(file, { "package.json" })
+		local args = js_command(root, kind == "test" and "test" or "bench")
+		table.insert(args, runner_relpath(root, file))
+		if scope == "unit" then
+			local name = ts_nearest(kind)
+			if not name then
+				return nil, "No " .. kind .. " found under cursor"
+			end
+			table.insert(args, "-t")
+			table.insert(args, name)
+		end
+		return { args = args, cwd = root }
+	end
+
+	local root = runner_root(file, { "Cargo.toml" })
+	if scope == "unit" then
+		local name = rust_nearest(kind)
+		if not name then
+			return nil, "No " .. kind .. " found under cursor"
+		end
+		return { args = kind == "test" and { "cargo", "test", name } or { "cargo", "bench", name }, cwd = root }
+	end
+
+	if kind == "test" then
+		local target = rust_target(root, file, "tests")
+		if target then
+			return { args = { "cargo", "test", "--test", target }, cwd = root }
+		end
+	else
+		local target = rust_target(root, file, "benches")
+		if target then
+			return { args = { "cargo", "bench", "--bench", target }, cwd = root }
+		end
+	end
+
+	local commands = {}
+	for _, name in ipairs(rust_names(kind)) do
+		table.insert(commands, kind == "test" and { "cargo", "test", name } or { "cargo", "bench", name })
+	end
+	if #commands == 0 then
+		return nil, "No " .. kind .. " found in this Rust file"
+	end
+	return { cmd = runner_chain(commands), cwd = root }
+end
+
+function YorhaRonin.open_test_result_window()
+	vim.cmd("botright vertical split")
+	vim.cmd("vertical resize 80")
+	vim.cmd("enew")
+end
+
+local function run_test_runner(kind, scope)
+	local spec, err = YorhaRonin.test_runner_command(kind, scope)
+	if not spec then
+		vim.notify(err, vim.log.levels.WARN)
+		return
+	end
+
+	YorhaRonin.open_test_result_window()
+	vim.fn.termopen(spec.args or spec.cmd, { cwd = spec.cwd })
+	vim.bo.bufhidden = "wipe"
+	vim.cmd("startinsert")
+end
+
+vim.keymap.set("n", "<leader>tt", function()
+	run_test_runner("test", "unit")
+end, { desc = "Run Test Under Cursor" })
+
+vim.keymap.set("n", "<leader>tf", function()
+	run_test_runner("test", "file")
+end, { desc = "Run Tests in File" })
+
+vim.keymap.set("n", "<leader>tb", function()
+	run_test_runner("bench", "unit")
+end, { desc = "Run Benchmark Under Cursor" })
+
+vim.keymap.set("n", "<leader>tB", function()
+	run_test_runner("bench", "file")
+end, { desc = "Run Benchmarks in File" })
+
 -- VSCode-style indenting: select with Shift-V, tap Tab/Shift-Tab to indent
 -- and stay in visual mode so you can keep pressing it.
 vim.keymap.set("v", "<Tab>", ">gv", { desc = "Indent Selection" })
@@ -1549,6 +1818,7 @@ require("lazy").setup({
 				{ "<leader>l", group = "LSP" },
 				{ "<leader>n", group = "Notes" },
 				{ "<leader>p", group = "Project" },
+				{ "<leader>t", group = "Test" },
 				{ "<leader>u", group = "UI" },
 				{ "<leader>wq", "<C-w>c", desc = "Close Split" },
 				{ "<leader>wo", "<C-w>o", desc = "Only This Window" },

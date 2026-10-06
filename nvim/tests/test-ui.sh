@@ -9,4 +9,5 @@ XDG_CONFIG_HOME="$root/.." XDG_STATE_HOME=/tmp/dotfiles-nvim-state XDG_CACHE_HOM
 	"+lua local ok, err = pcall(dofile, '$root/tests/test-yorha-ronin.lua'); if not ok then io.stderr:write(err .. '\\n'); vim.cmd('cquit 1') end" \
 	'+lua local dashboard = Snacks.config.get("dashboard") or {}; local header = dashboard.preset and dashboard.preset.header; if not (header and header:find("YORHA // RONIN", 1, true)) then vim.cmd("cquit 1") end' \
 	"+lua local ok, err = pcall(dofile, '$root/tests/test-boundaries.lua'); if not ok then io.stderr:write(err .. '\\n'); vim.cmd('cquit 1') end" \
+	"+lua local ok, err = pcall(dofile, '$root/tests/test-runner.lua'); if not ok then io.stderr:write(err .. '\\n'); vim.cmd('cquit 1') end" \
 	'+qa!'
