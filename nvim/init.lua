@@ -187,6 +187,7 @@ function YorhaRonin.apply_highlights()
 		YorhaBrass = { fg = "#B8A781" },
 		YorhaHealthy = { fg = "#8A8F73" },
 		YorhaSurface = { fg = "#D7D2C8", bg = "#101010" },
+		RtlOverlayText = { fg = "#D7D2C8" },
 		WinBar = { fg = "#6F6A63", bg = "#080808" },
 		WinBarNC = { fg = "#343434", bg = "#080808" },
 		SnacksDashboardNormal = { fg = "#D7D2C8", bg = "#080808" },
@@ -1489,6 +1490,29 @@ require("lazy").setup({
 		end,
 	},
 
+	-- Farsi/Arabic display: terminals draw codepoints left-to-right, so Persian
+	-- appears disconnected and reversed. This overlays the shaped, RTL-ordered
+	-- text with extmarks without touching the buffer contents. Requires a font
+	-- with Arabic Presentation Forms (Ghostty falls back to Geeza Pro).
+	{
+		"mavomen/rtl.nvim",
+		-- Must load before filetype detection so its FileType autocmd exists
+		-- when the buffer's filetype is set (BufReadPost is already too late).
+		lazy = false,
+		opts = {
+			-- Enablement is handled by the BufWinEnter autocmd in section 9,
+			-- which is more reliable than the plugin's FileType hook.
+			auto_filetypes = {},
+			-- Paper foreground, no background, so cursorline/syntax backgrounds
+			-- still show through the overlay. (The plugin deep-merges its default
+			-- link, so point it at a dedicated group instead of setting fg here.)
+			highlight = { link = "RtlOverlayText" },
+		},
+		keys = {
+			{ "<leader>rt", function() require("rtl").toggle() end, desc = "Toggle RTL overlay" },
+		},
+	},
+
 	{ "nvim-treesitter/nvim-treesitter-textobjects" },
 
 	-- Multi-cursor editing on word/symbol occurrences.
@@ -2157,6 +2181,47 @@ require("lazy").setup({
 -- ========================================================================== --
 
 vim.api.nvim_set_hl(0, "LspInlayHint", { fg = "#6F6A63", bg = "NONE", italic = true })
+
+-- Farsi/Arabic overlay enablement. rtl.nvim's own auto_filetypes hook depends
+-- on FileType ordering, which is unreliable here (the built-in markdown
+-- ftplugin can abort that event when a parser is not loaded yet). Check after
+-- the buffer is displayed instead, and only when it actually contains
+-- Arabic-script characters.
+local rtl_filetypes = { markdown = true, text = true, gitcommit = true }
+
+local function buffer_has_rtl(buf)
+	local last = math.min(vim.api.nvim_buf_line_count(buf), 500)
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, last, false)
+	for _, line in ipairs(lines) do
+		-- UTF-8 lead bytes: U+0600–U+06FF, U+0750–U+077F, and the Arabic
+		-- Presentation Forms blocks (U+FB50–U+FDFF, U+FE70–U+FEFF).
+		if line:find("[\216-\219\221\239]") then
+			return true
+		end
+	end
+	return false
+end
+
+vim.api.nvim_create_autocmd("BufWinEnter", {
+	desc = "Enable Farsi/Arabic RTL overlay",
+	callback = function(args)
+		vim.schedule(function()
+			if not vim.api.nvim_buf_is_valid(args.buf) then
+				return
+			end
+			if not rtl_filetypes[vim.bo[args.buf].filetype] then
+				return
+			end
+			if not buffer_has_rtl(args.buf) then
+				return
+			end
+			local ok, rtl = pcall(require, "rtl")
+			if ok and not rtl.is_enabled(args.buf) then
+				rtl.enable(args.buf)
+			end
+		end)
+	end,
+})
 
 -- LSP logs are invaluable while debugging, but an unbounded log had grown to
 -- several gigabytes here. Retain the latest diagnostics only, without doing a
