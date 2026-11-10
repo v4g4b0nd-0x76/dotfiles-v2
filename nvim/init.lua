@@ -181,23 +181,23 @@ end
 
 function YorhaRonin.apply_highlights()
 	local groups = {
-		YorhaSignal = { fg = "#f75341", bold = true },
-		YorhaPaper = { fg = "#fce8c3" },
-		YorhaMuted = { fg = "#917e6b" },
-		YorhaBrass = { fg = "#fbb829" },
-		YorhaHealthy = { fg = "#519f50" },
-		YorhaSurface = { fg = "#fce8c3", bg = "#121110" },
-		WinBar = { fg = "#917e6b", bg = "#121110" },
-		WinBarNC = { fg = "#585858", bg = "#121110" },
-		SnacksDashboardNormal = { fg = "#fce8c3", bg = "#121110" },
-		SnacksDashboardHeader = { fg = "#917e6b", bg = "#121110" },
-		SnacksDashboardTitle = { fg = "#f75341", bg = "#121110", bold = true },
-		SnacksDashboardKey = { fg = "#f75341", bg = "#121110", bold = true },
-		SnacksDashboardDesc = { fg = "#fce8c3", bg = "#121110" },
-		SnacksDashboardIcon = { fg = "#fbb829", bg = "#121110" },
-		SnacksDashboardDir = { fg = "#917e6b", bg = "#121110" },
-		SnacksDashboardFile = { fg = "#fce8c3", bg = "#121110" },
-		SnacksDashboardFooter = { fg = "#519f50", bg = "#121110" },
+		YorhaSignal = { fg = "#B73535", bold = true },
+		YorhaPaper = { fg = "#D7D2C8" },
+		YorhaMuted = { fg = "#6F6A63" },
+		YorhaBrass = { fg = "#B8A781" },
+		YorhaHealthy = { fg = "#8A8F73" },
+		YorhaSurface = { fg = "#D7D2C8", bg = "#101010" },
+		WinBar = { fg = "#6F6A63", bg = "#080808" },
+		WinBarNC = { fg = "#343434", bg = "#080808" },
+		SnacksDashboardNormal = { fg = "#D7D2C8", bg = "#080808" },
+		SnacksDashboardHeader = { fg = "#9A948A", bg = "#080808" },
+		SnacksDashboardTitle = { fg = "#B73535", bg = "#080808", bold = true },
+		SnacksDashboardKey = { fg = "#D94A4A", bg = "#080808", bold = true },
+		SnacksDashboardDesc = { fg = "#D7D2C8", bg = "#080808" },
+		SnacksDashboardIcon = { fg = "#B8A781", bg = "#080808" },
+		SnacksDashboardDir = { fg = "#7F9693", bg = "#080808" },
+		SnacksDashboardFile = { fg = "#D7D2C8", bg = "#080808" },
+		SnacksDashboardFooter = { fg = "#8A8F73", bg = "#080808" },
 	}
 	for name, value in pairs(groups) do
 		vim.api.nvim_set_hl(0, name, value)
@@ -222,8 +222,7 @@ function YorhaRonin.git_summary(cwd)
 	if vim.fn.executable("git") == 0 then
 		return ""
 	end
-	local output =
-		yorha_command({ "git", "status", "--short", "--branch" }, cwd or vim.fn.getcwd(), 300)
+	local output = yorha_command({ "git", "status", "--short", "--branch" }, cwd or vim.fn.getcwd(), 300)
 	local lines = vim.split(output, "\n", { trimempty = true })
 	if not lines[1] or not vim.startswith(lines[1], "## ") then
 		return ""
@@ -298,7 +297,12 @@ local yorha_telemetry_group = vim.api.nvim_create_augroup("YorhaRoninTelemetry",
 vim.api.nvim_create_autocmd("BufWritePost", {
 	group = yorha_telemetry_group,
 	callback = function()
-		YorhaRonin.refresh_telemetry()
+		-- refresh_telemetry shells out to git and ripgrep synchronously. Only pay
+		-- for it when the deck is actually on screen, so ordinary saves never
+		-- stall the editor (and never while you are typing).
+		if vim.bo.filetype == "snacks_dashboard" then
+			vim.schedule(YorhaRonin.refresh_telemetry)
+		end
 	end,
 })
 
@@ -325,13 +329,6 @@ vim.api.nvim_create_autocmd("User", {
 	callback = refresh_visible_telemetry,
 })
 
-local function telescope_action(picker)
-	return function()
-		require("lazy").load({ plugins = { "telescope.nvim" } })
-		require("telescope.builtin")[picker]()
-	end
-end
-
 local function return_to_deck_source()
 	local source_buf = yorha_context.buf
 	if vim.bo.filetype == "snacks_dashboard" and vim.fn.tabpagenr("$") > 1 then
@@ -339,6 +336,17 @@ local function return_to_deck_source()
 	end
 	if source_buf and vim.api.nvim_buf_is_valid(source_buf) then
 		vim.api.nvim_set_current_buf(source_buf)
+	end
+end
+
+-- The deck lives in its own tab, so a picker launched straight from it would
+-- open the chosen file in that tab. Return to the buffer the deck was opened
+-- from first, so the file lands in the main editing window instead.
+local function telescope_action(picker)
+	return function()
+		return_to_deck_source()
+		require("lazy").load({ plugins = { "telescope.nvim" } })
+		require("telescope.builtin")[picker]()
 	end
 end
 
@@ -361,7 +369,7 @@ function YorhaRonin.deck_sections()
 			pane = 1,
 			title = "NAVIGATE",
 			padding = 1,
-			{ icon = "01", key = "f", desc = "Find files", action = "<leader>ff" },
+			{ icon = "01", key = "f", desc = "Find files", action = telescope_action("find_files") },
 			{ icon = "02", key = "g", desc = "Live grep", action = telescope_action("live_grep") },
 			{
 				icon = "03",
@@ -462,6 +470,13 @@ YorhaRonin.apply_highlights()
 vim.api.nvim_create_autocmd("ColorScheme", { callback = YorhaRonin.apply_highlights })
 opt.winbar = "%{%v:lua.YorhaRonin.winbar()%}"
 
+-- Kuro Nezumi is Neovim's own palette, deliberately independent of the terminal
+-- theme (Ghostty stays on Srcery). Loaded after the highlight helpers above so
+-- the ColorScheme hook can re-apply the Yorha/Dashboard groups that
+-- `highlight clear` resets.
+vim.opt.rtp:prepend(vim.fn.stdpath("config"))
+vim.cmd.colorscheme("kuro_nezumi")
+
 -- ========================================================================== --
 -- 4. GLOBAL KEYMAPS
 -- ========================================================================== --
@@ -554,6 +569,11 @@ vim.keymap.set("n", "<C-Right>", "<C-w>l", { desc = "Navigate to Right Window" }
 vim.keymap.set("n", "<C-Up>", "<C-w>k", { desc = "Navigate to Upper Window" })
 vim.keymap.set("n", "<C-Down>", "<C-w>j", { desc = "Navigate to Lower Window" })
 vim.keymap.set("n", "<C-S-z>", "<C-r>", { desc = "Redo Last Undo" })
+
+-- Visual paste replaces the selection without yanking the replaced text into
+-- the unnamed register, so you can paste the same thing over several places.
+vim.keymap.set("x", "p", '"_dP', { desc = "Paste over selection without yanking it" })
+vim.keymap.set("x", "P", '"_dP', { desc = "Paste over selection without yanking it" })
 vim.keymap.set("n", "<C-q>", "<cmd>mksession! .nvim_session | qa!<CR>", { desc = "Save Session and Quit Instantly" })
 -- Render the current, saved Markdown file with Glow in a dedicated tab. This
 -- complements the live editing view with a faithful final-read preview.
@@ -657,14 +677,33 @@ local function focus_code_window()
 	end
 end
 
+-- Remember the editor window that asked for diagnostics, so closing Trouble
+-- (from <leader>d*, or its own q/<Esc>) always lands back in that exact window
+-- instead of the file tree or a stale panel.
+local trouble_return_win
+
+local function close_trouble()
+	local ok, trouble = pcall(require, "trouble")
+	if ok then
+		pcall(trouble.close)
+	end
+	vim.schedule(function()
+		local win = trouble_return_win
+		trouble_return_win = nil
+		if win and vim.api.nvim_win_is_valid(win) then
+			pcall(vim.api.nvim_set_current_win, win)
+		else
+			focus_code_window()
+		end
+	end)
+end
+
 local function toggle_trouble(opts)
 	local trouble = require("trouble")
 	if trouble.is_open(opts) then
-		trouble.close(opts)
-		-- The on_close hook covers q/Esc too; this schedule also makes the
-		-- leader mapping safe with versions of Trouble that close asynchronously.
-		vim.schedule(focus_code_window)
+		close_trouble()
 	else
+		trouble_return_win = vim.api.nvim_get_current_win()
 		trouble.open(opts)
 	end
 end
@@ -829,7 +868,12 @@ local function rust_nearest(kind)
 		if name then
 			return name
 		end
-		if row > cursor and lines[row]:match("%S") and not lines[row]:match("^%s*#%[") and not lines[row]:match("^%s*//") then
+		if
+			row > cursor
+			and lines[row]:match("%S")
+			and not lines[row]:match("^%s*#%[")
+			and not lines[row]:match("^%s*//")
+		then
 			break
 		end
 	end
@@ -1171,21 +1215,21 @@ require("lazy").setup({
 		event = "VeryLazy",
 		dependencies = { "nvim-tree/nvim-web-devicons" },
 		config = function()
-			local surface = { fg = "#fce8c3", bg = "#121110" }
-			local muted = { fg = "#917e6b", bg = "#121110" }
+			local surface = { fg = "#D7D2C8", bg = "#101010" }
+			local muted = { fg = "#6F6A63", bg = "#101010" }
 			local function mode(color)
 				return {
-					a = { fg = "#121110", bg = color, gui = "bold" },
+					a = { fg = "#080808", bg = color, gui = "bold" },
 					b = muted,
 					c = surface,
 				}
 			end
 			local theme = {
-				normal = mode("#f75341"),
-				insert = mode("#519f50"),
-				visual = mode("#fbb829"),
-				replace = mode("#ef2f27"),
-				command = mode("#fce8c3"),
+				normal = mode("#B73535"),
+				insert = mode("#8A8F73"),
+				visual = mode("#B8A781"),
+				replace = mode("#D94A4A"),
+				command = mode("#8C9097"),
 				inactive = { a = muted, b = muted, c = muted },
 			}
 
@@ -1228,13 +1272,13 @@ require("lazy").setup({
 									return
 								end
 								if (counts[vim.diagnostic.severity.ERROR] or 0) > 0 then
-									return { fg = "#EF2F27", bold = true }
+									return { fg = "#D94A4A", bold = true }
 								elseif (counts[vim.diagnostic.severity.WARN] or 0) > 0 then
-									return { fg = "#FBB829", bold = true }
+									return { fg = "#B8A781", bold = true }
 								end
 							end,
 						},
-						{ YorhaRonin.todo_status, color = { fg = "#fbb829" } },
+						{ YorhaRonin.todo_status, color = { fg = "#B8A781" } },
 					},
 					lualine_z = { YorhaRonin.session_elapsed, "location" },
 				},
@@ -1247,14 +1291,6 @@ require("lazy").setup({
 					lualine_z = {},
 				},
 			})
-		end,
-	},
-	{
-		"srcery-colors/srcery-vim",
-		lazy = false,
-		priority = 1000,
-		config = function()
-			vim.cmd.colorscheme("srcery")
 		end,
 	},
 	{
@@ -1549,6 +1585,11 @@ require("lazy").setup({
 		opts = {
 			windowCreationCommand = "vertical botright 50split",
 			keymaps = { close = { n = "q" } },
+			-- Open matches in the window grug-far was launched from. The default
+			-- ("left") skips buftype=nofile windows, so when no file was open yet
+			-- (the dashboard) it created an extra split instead of replacing the
+			-- main buffer. "prev" reuses that original window either way.
+			openTargetWindow = { preferredLocation = "prev" },
 		},
 	},
 	{
@@ -1562,12 +1603,24 @@ require("lazy").setup({
 			auto_close = false,
 			focus = true,
 			win = { position = "right", size = 60 },
-			on_close = function()
-				-- This fires for Trouble's own q mapping too, not only our
-				-- <leader>d toggles. Defer until Neovim has selected its next
-				-- window, then make sure it is a real editor buffer.
-				vim.schedule(focus_code_window)
-			end,
+			-- `on_close` is not a top-level Trouble option in this version, so
+			-- it was silently ignored and q left focus on a non-editor window.
+			-- Override the panel's buffer-local q/<Esc> actions instead; they
+			-- close the view and jump back to the window that opened it.
+			keys = {
+				q = {
+					action = function()
+						close_trouble()
+					end,
+					desc = "Close and return to editor",
+				},
+				["<esc>"] = {
+					action = function()
+						close_trouble()
+					end,
+					desc = "Close and return to editor",
+				},
+			},
 			-- NOTE: previously `preview = { type = "split", relative = "win",
 			-- position = "bottom", size = 0.40 }`.
 			-- `relative = "win"` requires Trouble to also pass a concrete
@@ -1788,11 +1841,11 @@ require("lazy").setup({
 			})
 
 			local hl = vim.api.nvim_set_hl
-			hl(0, "NvimTreeFolderName", { fg = "#83a598", bold = true })
-			hl(0, "NvimTreeOpenedFolderName", { fg = "#fabd2f", bold = true })
-			hl(0, "NvimTreeRootFolder", { fg = "#d79921", bold = true })
-			hl(0, "NvimTreeOpenedFile", { fg = "#d3869b", bold = true, underline = true })
-			hl(0, "NvimTreeIndentMarker", { fg = "#504945" })
+			hl(0, "NvimTreeFolderName", { fg = "#7F9693", bold = true })
+			hl(0, "NvimTreeOpenedFolderName", { fg = "#B8A781", bold = true })
+			hl(0, "NvimTreeRootFolder", { fg = "#B73535", bold = true })
+			hl(0, "NvimTreeOpenedFile", { fg = "#D7D2C8", bold = true, underline = true })
+			hl(0, "NvimTreeIndentMarker", { fg = "#343434" })
 			vim.keymap.set("n", "<leader>e", ":NvimTreeToggle<CR>", { silent = true, desc = "Toggle File Tree" })
 		end,
 	},
@@ -1959,9 +2012,17 @@ require("lazy").setup({
 						["rust-analyzer"] = {
 							cargo = {
 								-- target = "x86_64-unknown-linux-gnu", -- << change if you target a different linux arch
-								allFeatures = true,
+								-- allFeatures pulls every optional dependency into the
+								-- crate graph, which made analysis/typing crawl on
+								-- feature-heavy workspaces. Default features keep it
+								-- responsive; flip this back on if you need analysis
+								-- of feature-gated code.
+								allFeatures = false,
 							},
-							check = { command = "clippy" },
+							-- `cargo check` on save is far cheaper than clippy, which
+							-- recompiled the whole crate and made saves feel stalled.
+							-- Run clippy explicitly when you want the extra lints.
+							check = { command = "check" },
 							checkOnSave = true,
 						},
 					},
@@ -1979,24 +2040,24 @@ require("lazy").setup({
 							completeFunctionCalls = true,
 							expandWorkspaceToModule = true,
 							symbolScope = "all",
-							staticcheck = true,
+							-- staticcheck + shadow run heavy analyzers on every edit;
+							-- on large packages that is what made typing feel laggy.
+							staticcheck = false,
 							semanticTokens = true,
-							-- Parsing/type errors still appear immediately; this shortens the
-							-- pause before the more expensive package diagnostics appear.
-							diagnosticsDelay = "300ms",
+							-- Parsing/type errors still appear immediately; this debounces
+							-- the expensive package diagnostics while you type quickly.
+							diagnosticsDelay = "700ms",
 							directoryFilters = { "-.git", "-**/node_modules", "-**/vendor" },
 							analyses = {
 								unusedparams = true,
 								unusedwrite = true,
-								shadow = true,
+								shadow = false,
 							},
 							hints = {
 								assignVariableTypes = true,
 								compositeLiteralFields = true,
-								constantValues = true,
 								functionTypeParameters = true,
 								parameterNames = true,
-								rangeVariableTypes = true,
 							},
 						},
 					},
@@ -2025,15 +2086,17 @@ require("lazy").setup({
 		config = function()
 			local lint = require("lint")
 			lint.linters_by_ft = {
-				go = { "golangcilint" },
 				sql = { "sqlfluff" },
 			}
 
-			-- golangci-lint uses exit code 7 when package loading/typechecking
-			-- fails (common briefly while editing). gopls already publishes the
-			-- useful compiler diagnostic; keep parsing any linter JSON without
-			-- showing a redundant command-failed notification on every save.
+			-- golangci-lint is CPU-heavy and running it on every save made Go
+			-- editing feel sluggish. gopls still publishes compile/type errors
+			-- immediately; run the full lint suite explicitly with <leader>ll.
 			lint.linters.golangcilint.ignore_exitcode = true
+
+			vim.keymap.set("n", "<leader>ll", function()
+				lint.try_lint(vim.bo.filetype == "go" and "golangcilint" or nil)
+			end, { desc = "Lint Buffer Now" })
 
 			-- Make SQLFluff parse stdin as PostgreSQL even when a project does
 			-- not yet have its own .sqlfluff configuration file.
@@ -2093,7 +2156,7 @@ require("lazy").setup({
 -- 9. AUTOCOMMANDS
 -- ========================================================================== --
 
-vim.api.nvim_set_hl(0, "LspInlayHint", { fg = "#917E6B", bg = "NONE", italic = true })
+vim.api.nvim_set_hl(0, "LspInlayHint", { fg = "#6F6A63", bg = "NONE", italic = true })
 
 -- LSP logs are invaluable while debugging, but an unbounded log had grown to
 -- several gigabytes here. Retain the latest diagnostics only, without doing a

@@ -1,4 +1,7 @@
-font-family = FiraCode Nerd
+# JetBrains Mono for code; Noto Sans Mono CJK JP covers Japanese glyphs
+# (e.g. the 浪人 dashboard header) that the Nerd Font does not include.
+font-family = JetBrainsMono Nerd Font
+font-family = Noto Sans Mono CJK JP
 font-size = 16
 
 confirm-close-surface = false
